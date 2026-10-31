@@ -118,6 +118,11 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .scan-big{display:flex;flex-direction:column;align-items:center;gap:8px;padding:26px;border:2px dashed var(--line);border-radius:12px;cursor:pointer;color:var(--muted);text-align:center}
 .scan-big b{font-size:17px;color:var(--accent)}
 .busy{opacity:.5;pointer-events:none}
+.sync{display:flex;align-items:center;gap:6px;font-size:12.5px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.sync span{flex:1;line-height:1.3}
+.sync button{padding:3px 8px;font-size:12px}
+.sync.ok{border-color:#b9d3c6;background:var(--accent-soft)}
+.sync.wait{border-color:#efc9b3;background:var(--warn-soft)}
 @media (max-width:860px){
   .app{grid-template-columns:1fr}
   aside{position:fixed;left:0;top:0;z-index:15;width:250px;transform:translateX(-100%);transition:.2s;box-shadow:0 0 40px rgba(0,0,0,.2)}
@@ -136,6 +141,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
     <div class="logo">Mes <span>Papiers</span></div>
     <div class="nav" id="nav"></div>
     <div class="side-foot">
+      <div class="sync" id="syncBox"><span id="syncStat">🖥️ PC non configuré</span><button id="bPc">Régler</button></div>
       <button id="bExport">💾 Sauvegarder tout (fichier)</button>
       <button id="bImport">📂 Restaurer une sauvegarde</button>
       <button id="bCsv">📊 Exporter la liste (Excel)</button>
@@ -215,6 +221,22 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
         <input type="file" id="scanGalleryInput" accept="image/*" multiple hidden></p>
     </div>
     <div class="mf"><button class="btn" data-close>Annuler</button><button class="btn pri" id="scanDone" disabled>Créer le PDF et classer</button></div>
+  </div>
+</div>
+
+<!-- Réglage PC -->
+<div class="ov" id="ovPc">
+  <div class="modal" style="width:min(520px,100%)">
+    <div class="mh"><h3>Envoi automatique vers mon PC</h3><button class="x" data-close>×</button></div>
+    <div class="mb form" style="grid-template-columns:1fr">
+      <label>Adresse de ton PC (Tailscale)
+        <input id="pcUrl" placeholder="https://mon-pc.tailXXXX.ts.net" inputmode="url" autocapitalize="off" spellcheck="false"></label>
+      <p class="muted" style="margin:0;font-size:13px">Sur le PC, lance « Lancer Mes Papiers » puis, une seule fois, <code>tailscale serve --bg 8765</code>. L'adresse à recopier ici s'affiche alors. Laisse vide pour ne rien envoyer.</p>
+      <label style="display:flex;gap:10px;align-items:flex-start;color:var(--ink);font-size:14px"><input type="checkbox" id="pcNoKeep" style="width:auto;margin-top:3px">
+        <span><b>Ne rien garder sur cet appareil</b><br><span class="muted" style="font-size:13px">Recommandé pour le téléphone : chaque document est envoyé au PC puis effacé d'ici. Tu peux toujours les consulter, ils sont lus sur le PC à la demande.</span></span></label>
+      <p id="pcTest" style="margin:0;font-size:14px"></p>
+    </div>
+    <div class="mf"><button class="btn" id="pcTry">Tester</button><button class="btn pri" id="pcOk">Enregistrer</button></div>
   </div>
 </div>
 
@@ -414,11 +436,11 @@ $('#bSave').onclick=async()=>{
     titre:f.titre.value.trim(), categorie:f.categorie.value, organisme:f.organisme.value.trim(),
     date:f.date.value, montant:f.montant.value===''?'':+f.montant.value, echeance:f.echeance.value,
     reference:f.reference.value.trim(), notes:f.notes.value.trim(),
-    tags:f.tags.value.split(',').map(t=>t.trim()).filter(Boolean), fichiers:pending
+    tags:f.tags.value.split(',').map(t=>t.trim()).filter(Boolean), fichiers:pending, _sync:''
   };
   try{await dbPut(d)}catch(err){toast('Erreur d\'enregistrement : '+err.message);return}
   const i=DOCS.findIndex(x=>x.id===d.id); if(i>=0) DOCS[i]=d; else DOCS.push(d);
-  hide('#ovForm');render();toast(editing?'Document modifié':'Document enregistré');
+  hide('#ovForm');render();toast(editing?'Document modifié':'Document enregistré');syncSoon();
   if(detId===d.id) openDet(d.id);
 };
 
@@ -439,27 +461,34 @@ function openDet(id){
       ${row('Référence',esc(d.reference))}
       ${row('Mots-clés',(d.tags||[]).map(t=>`<span class="chip">${esc(t)}</span>`).join(' '))}
       ${row('Notes',esc(d.notes).replace(/\n/g,'<br>'))}
+      ${server()?row('Rangement',d._sync==='ok'?(d._remote?'🖥️ Sur le PC uniquement':'✅ Copie sur le PC'):'⏳ Pas encore envoyé au PC'):''}
       ${files.length?`<div><dt>Fichiers</dt><dd>${files.map((f,i)=>`<div><a href="#" data-dl="${i}">⬇ ${esc(f.nom)}</a> <span class="muted">${fsize(f.taille||0)}</span></div>`).join('')}</dd></div>`:''}
     </dl>
     <div class="preview">${files.length?`<div class="tabs">${files.map((f,i)=>`<button data-pv="${i}" class="${i?'':'on'}">${esc(f.nom)}</button>`).join('')}</div><div class="pv" id="pv"></div>`:'<div class="pv muted">Pas de fichier joint</div>'}</div>`;
   if(files.length) showPv(d,0);
   show('#ovDet');
 }
-function showPv(d,i){
-  const f=d.fichiers[i];const u=URL.createObjectURL(f.blob);urls.push(u);
+async function showPv(d,i){
+  const f=d.fichiers[i];
   document.querySelectorAll('[data-pv]').forEach(b=>b.classList.toggle('on',+b.dataset.pv===i));
+  let blob;
+  if(f.blob) blob=f.blob;
+  else{$('#pv').innerHTML='<p class="muted">Lecture sur le PC…</p>';try{blob=await getBlob(d,f)}catch(e){$('#pv').innerHTML='<p class="muted">Ce document est rangé sur ton PC, qui est injoignable pour l\'instant.</p>';return}}
+  if(detId!==d.id)return;
+  const u=URL.createObjectURL(blob);urls.push(u);
   $('#pv').innerHTML=f.type.startsWith('image/')?`<img src="${u}" alt="">`:f.type==='application/pdf'||f.type.startsWith('text/')?`<iframe src="${u}"></iframe>`:`<p class="muted">Aperçu impossible pour ce type de fichier. <a href="#" data-dl="${i}">Le télécharger</a></p>`;
 }
 $('#det').onclick=e=>{
   const d=DOCS.find(x=>x.id===detId);
   if(e.target.dataset.pv!=null) showPv(d,+e.target.dataset.pv);
-  if(e.target.dataset.dl!=null){e.preventDefault();const f=d.fichiers[+e.target.dataset.dl];download(f.blob,f.nom)}
+  if(e.target.dataset.dl!=null){e.preventDefault();const f=d.fichiers[+e.target.dataset.dl];getBlob(d,f).then(b=>download(b,f.nom)).catch(()=>toast('PC injoignable'))}
 };
 $('#bEdit').onclick=()=>{const d=DOCS.find(x=>x.id===detId);hide('#ovDet');openForm(d)};
 $('#bDel').onclick=async()=>{
   const d=DOCS.find(x=>x.id===detId);
   if(!confirm(`Supprimer « ${d.titre} » et ses fichiers ?`))return;
   await dbDel(d.id);DOCS=DOCS.filter(x=>x.id!==d.id);detId=null;hide('#ovDet');render();toast('Document supprimé');
+  if(d._sync==='ok'||d._vuPc){const q=delQueue();q.push(d.id);setDelQueue(q)}syncSoon();
 };
 
 /* ---------- modales ---------- */
@@ -482,6 +511,8 @@ $('#q').oninput=e=>{st.q=e.target.value;if(st.q&&st.view==='dash')st.view='all';
 $('#fAnnee').onchange=e=>{st.annee=e.target.value;render()};
 $('#bAdd').onclick=()=>openForm();
 $('#bMenu').onclick=()=>$('#side').classList.toggle('open');
+document.querySelector('.side-foot').addEventListener('click',e=>{if(e.target.closest('button'))$('#side').classList.remove('open')});
+$('main').addEventListener('click',e=>{if(!e.target.closest('#bMenu'))$('#side').classList.remove('open')});
 
 /* glisser-déposer n'importe où */
 let dc=0;
@@ -497,7 +528,9 @@ $('#bExport').onclick=async()=>{
   if(!DOCS.length){toast('Rien à sauvegarder');return}
   toast('Préparation de la sauvegarde…');
   const out=[];
-  for(const d of DOCS){out.push({...d,fichiers:await Promise.all((d.fichiers||[]).map(async f=>({id:f.id,nom:f.nom,type:f.type,taille:f.taille,data:await toB64(f.blob)})))})}
+  try{
+    for(const d of DOCS){const x={...d,fichiers:await Promise.all((d.fichiers||[]).map(async f=>({id:f.id,nom:f.nom,type:f.type,taille:f.taille,data:await toB64(await getBlob(d,f))})))};delete x._sync;delete x._remote;delete x._vuPc;out.push(x)}
+  }catch(e){toast('PC injoignable : sauvegarde impossible');return}
   download(new Blob([JSON.stringify({app:'mes-papiers',version:1,date:new Date().toISOString(),docs:out})],{type:'application/json'}),`mes-papiers-sauvegarde-${today()}.json`);
   localStorage.setItem('mp-last-backup',today());
 };
@@ -510,9 +543,9 @@ $('#fImport').onchange=async e=>{
     if(!confirm(`Restaurer ${j.docs.length} document(s) ? Les documents existants identiques seront remplacés, les autres conservés.`))return;
     for(const d of j.docs){
       d.fichiers=await Promise.all((d.fichiers||[]).map(async f=>({id:f.id||uid(),nom:f.nom,type:f.type,taille:f.taille,blob:await (await fetch(f.data)).blob()})));
-      await dbPut(d);
+      d._sync='';await dbPut(d);
     }
-    DOCS=await dbAll();render();toast(`${j.docs.length} document(s) restauré(s)`);
+    DOCS=await dbAll();render();toast(`${j.docs.length} document(s) restauré(s)`);syncSoon();
   }catch(err){alert('Restauration impossible : '+err.message)}
 };
 $('#bCsv').onclick=()=>{
@@ -631,11 +664,127 @@ $('#scanDone').onclick=async()=>{
   m.classList.remove('busy');$('#scanDone').textContent='Créer le PDF et classer';
 };
 
+/* ---------- synchronisation avec le PC ---------- */
+const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+const server=()=>LS.get('mp-server','').replace(/\/+$/,'');
+const keep=()=>!server()||LS.get('mp-keep','1')==='1';
+async function getBlob(d,f){
+  if(f.blob) return f.blob;
+  return await (await api(`/api/files/${encodeURIComponent(d.id)}/${encodeURIComponent(f.id)}`,{timeout:180000})).blob();
+}
+const delQueue=()=>{try{return JSON.parse(LS.get('mp-del','[]'))}catch(e){return[]}};
+const setDelQueue=q=>LS.set('mp-del',JSON.stringify(q));
+let syncing=false,syncAgain=false,syncTimer=null,lastSync=null,syncErr='';
+function syncSoon(){clearTimeout(syncTimer);syncTimer=setTimeout(sync,400)}
+function syncStatus(){
+  const box=$('#syncBox'),s=$('#syncStat');if(!box)return;
+  const wait=DOCS.filter(d=>d._sync!=='ok').length+delQueue().length;
+  box.className='sync'+(!server()?'':syncErr?' wait':wait?' wait':' ok');
+  if(!server()) s.textContent='🖥️ PC non configuré';
+  else if(syncing) s.textContent='🔄 Envoi vers le PC…';
+  else if(syncErr) s.textContent=`⏳ PC injoignable${wait?` · ${wait} en attente`:''}`;
+  else if(wait) s.textContent=`⏳ ${wait} en attente`;
+  else s.textContent='✅ PC à jour'+(lastSync?' · '+lastSync.toTimeString().slice(0,5):'');
+}
+async function api(path,opt={}){
+  const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),opt.timeout||20000);
+  try{const r=await fetch(server()+path,{...opt,signal:ctl.signal});if(!r.ok)throw new Error('PC : erreur '+r.status);return r}
+  finally{clearTimeout(t)}
+}
+async function sync(){
+  if(!server()){syncStatus();return}
+  if(syncing){syncAgain=true;return}
+  syncing=true;syncErr='';syncStatus();
+  try{
+    await api('/api/ping',{timeout:6000});
+    // 1. suppressions
+    for(const id of delQueue()){await api('/api/docs/'+encodeURIComponent(id),{method:'DELETE'});setDelQueue(delQueue().filter(x=>x!==id))}
+    // 2. envoi des documents nouveaux / modifiés
+    for(const d of DOCS.filter(x=>x._sync!=='ok')){
+      const meta={...d,categorieNom:CAT[d.categorie]?.nom,fichiers:(d.fichiers||[]).map(f=>({id:f.id,nom:f.nom,type:f.type,taille:f.taille}))};
+      delete meta._sync;delete meta._vuPc;
+      const r=await (await api('/api/docs/'+encodeURIComponent(d.id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(meta)})).json();
+      for(const fid of r.manquants||[]){
+        const f=d.fichiers.find(x=>x.id===fid);if(!f||!f.blob)continue;
+        await api(`/api/files/${encodeURIComponent(d.id)}/${encodeURIComponent(fid)}`,{method:'PUT',headers:{'Content-Type':'application/octet-stream'},body:f.blob,timeout:180000});
+      }
+      d._sync='ok';d._vuPc=true;
+      if(keep()) await dbPut(d);
+      else{await dbDel(d.id);d._remote=true;d.fichiers=(d.fichiers||[]).map(({blob,...x})=>x)}
+      syncStatus();
+    }
+    // 3. réception de ce qui a été ajouté ailleurs (autre appareil)
+    const {docs:remote,supprimes}=await (await api('/api/docs')).json();
+    let changed=false;
+    if(!keep()){
+      // appareil « sans copie » : la liste vient du PC, rien n'est enregistré ici
+      const pend=DOCS.filter(x=>x._sync!=='ok');
+      DOCS=pend.concat(remote.filter(r=>!pend.some(p=>p.id===r.id)).map(r=>{const d={...r,_sync:'ok',_vuPc:true,_remote:true};delete d.categorieNom;return d}));
+      lastSync=new Date();render();if(detId&&DOCS.some(x=>x.id===detId))openDet(detId);
+      throw 'fini';
+    }
+    for(const [id,when] of Object.entries(supprimes||{})){
+      const l=DOCS.find(x=>x.id===id);
+      if(l&&(l._sync==='ok'||(l.modifie||'')<when)){await dbDel(id);DOCS=DOCS.filter(x=>x.id!==id);changed=true}
+    }
+    for(const r of remote){
+      const l=DOCS.find(x=>x.id===r.id);
+      if(l&&(l.modifie||'')>=(r.modifie||''))continue;
+      if(l&&l._sync!=='ok')continue;
+      const files=[];
+      for(const f of r.fichiers||[]){
+        const old=l?.fichiers?.find(x=>x.id===f.id);
+        const blob=old?.blob||await (await api(`/api/files/${encodeURIComponent(r.id)}/${encodeURIComponent(f.id)}`,{timeout:180000})).blob();
+        files.push({...f,blob});
+      }
+      const d={...r,fichiers:files,_sync:'ok',_vuPc:true};delete d.categorieNom;
+      await dbPut(d);const i=DOCS.findIndex(x=>x.id===d.id);if(i>=0)DOCS[i]=d;else DOCS.push(d);changed=true;
+    }
+    lastSync=new Date();
+    if(changed){render();if(detId)openDet(detId)}
+  }catch(e){if(e!=='fini')syncErr=e.name==='AbortError'?'délai dépassé':e.message;}
+  syncing=false;syncStatus();
+  if(syncAgain){syncAgain=false;syncSoon()}
+}
+const _render=render;render=function(){_render();syncStatus()};
+$('#bPc').onclick=()=>{
+  $('#pcUrl').value=server();$('#pcTest').textContent='';
+  const local=/^https?:$/.test(location.protocol)&&!/github\.io$/.test(location.hostname);
+  $('#pcNoKeep').checked=server()?LS.get('mp-keep','1')!=='1':!local&&/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+  show('#ovPc');
+};
+async function testPc(url){
+  url=url.trim().replace(/\/+$/,'');if(!url)return null;
+  if(!/^https?:\/\//.test(url))url='https://'+url;
+  try{const r=await fetch(url+'/api/ping');const j=await r.json();if(j.app!=='mes-papiers-serveur')throw 0;return {url,dossier:j.dossier}}catch(e){return false}
+}
+$('#pcTry').onclick=async()=>{
+  $('#pcTest').textContent='Test en cours…';
+  const r=await testPc($('#pcUrl').value);
+  $('#pcTest').innerHTML=r===null?'Aucune adresse saisie.':r?`✅ PC trouvé. Les documents iront dans <b>${esc(r.dossier)}</b>`:'❌ PC injoignable. Vérifie que « Lancer Mes Papiers » tourne sur le PC et que Tailscale est actif sur les deux appareils.';
+};
+$('#pcOk').onclick=async()=>{
+  const v=$('#pcUrl').value.trim();
+  if(!v){LS.set('mp-server','');hide('#ovPc');syncStatus();return}
+  const r=await testPc(v);
+  LS.set('mp-keep',$('#pcNoKeep').checked?'0':'1');
+  LS.set('mp-server',r?r.url:(/^https?:\/\//.test(v)?v:'https://'+v).replace(/\/+$/,''));
+  hide('#ovPc');toast(r?'PC enregistré, envoi en cours':'Adresse enregistrée (PC injoignable pour l\'instant)');sync();
+};
+setInterval(()=>{if(server())sync()},60000);
+window.addEventListener('online',syncSoon);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncSoon()});
+
 /* ---------- démarrage ---------- */
 (async()=>{
   try{await openDB();DOCS=await dbAll()}catch(err){$('#view').innerHTML=`<div class="empty"><b>Stockage indisponible</b>${esc(err.message)}<br>Ouvre ce fichier dans Chrome, Edge ou Firefox (pas en navigation privée).</div>`;return}
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist();
   render();
+  // ouvert depuis le serveur du PC lui-même : on se règle automatiquement dessus
+  if(!server()&&/^https?:$/.test(location.protocol)&&!/github\.io$/.test(location.hostname)){
+    try{const j=await (await fetch('/api/ping')).json();if(j.app==='mes-papiers-serveur')LS.set('mp-server',location.origin)}catch(e){}
+  }
+  sync();
   const lb=localStorage.getItem('mp-last-backup');
   if(DOCS.length>5&&(!lb||daysTo(lb)<-30)) setTimeout(()=>toast('Pense à faire une sauvegarde (bouton 💾 à gauche)'),1200);
 })();
