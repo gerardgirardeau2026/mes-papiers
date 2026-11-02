@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mes Comptes</title>
 <style>
-:root{--bg:#f5f3ee;--panel:#fff;--ink:#1f2328;--muted:#6b6f76;--line:#e3dfd5;--accent:#2f5d50;--accent-soft:#e7efea;--warn:#b5562a;--warn-soft:#fbede4;--danger:#a83232;--pos:#1d7a46;--neg:#b23b3b;--radius:10px;--shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.04)}
+:root{--sep:#d6d1c4;--th-bg:#d6e4dc;--th-fg:#24493f;--zebra:#f6f4ef;--hover:#eeebe3;--side:#fbfaf7;--tot:#f3f1ec;--sol:#fbfaf7;--bg:#f5f3ee;--panel:#fff;--ink:#1f2328;--muted:#6b6f76;--line:#e3dfd5;--accent:#2f5d50;--accent-soft:#e7efea;--warn:#b5562a;--warn-soft:#fbede4;--danger:#a83232;--pos:#1d7a46;--neg:#b23b3b;--radius:10px;--shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.04)}
 *{box-sizing:border-box}html,body{margin:0;height:100%}
 body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
 button,input,select,textarea{font:inherit;color:inherit}
 .app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
-aside{background:#fbfaf7;border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
+aside{background:var(--side);border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
 .logo{font-weight:700;font-size:19px;padding:0 10px 14px}.logo span{color:var(--accent)}
 .nav button{display:flex;align-items:center;gap:9px;width:100%;border:0;background:none;padding:7px 10px;border-radius:8px;cursor:pointer;text-align:left}
 .nav button:hover{background:#f0ede6}.nav button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
@@ -38,11 +38,11 @@ select.f,input.f{border:1px solid var(--line);background:#fff;border-radius:8px;
 .tw{overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
 table{width:100%;border-collapse:collapse}
 th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle}
-th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:#fbfaf7;position:sticky;top:0;z-index:1;white-space:nowrap}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--th-fg);background:var(--th-bg);font-weight:700;position:sticky;top:0;z-index:1;white-space:nowrap}
 tbody tr:hover{background:#faf8f3}
 th,td{border-right:1px solid var(--line)}
-tbody tr:nth-child(even):not(.sec):not(.tot):not(.sol)>td{background:#f6f4ef}
-tbody tr:hover:not(.sec):not(.tot):not(.sol)>td{background:#eeebe3}
+tbody tr:nth-child(even):not(.sec):not(.tot):not(.sol)>td{background:var(--zebra)}
+tbody tr:hover:not(.sec):not(.tot):not(.sol)>td{background:var(--hover)}
 .rel tbody tr:nth-child(even):not(.s)>td{background:#f4f4f4!important}
 td.ln,th.ln{width:1%;text-align:right;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:8px}
 table.nl tbody{counter-reset:ln}table.nl tbody tr{counter-increment:ln}table.nl td.ln::before{content:counter(ln)}th:last-child,td:last-child{border-right:0}
@@ -52,12 +52,12 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .clic{cursor:pointer}.clic:hover{text-decoration:underline}
 table.recap td,table.recap th{padding:5px 8px;font-size:12.5px;border-right:1px solid var(--line)}
 table.recap td:last-child,table.recap th:last-child{border-right:0}
-table.recap td:first-child,table.recap th:first-child{border-right:2px solid #d6d1c4}
-table.recap td:first-child,table.recap th:first-child{position:sticky;left:0;background:#fff;z-index:2;white-space:nowrap}
-table.recap th:first-child{background:#fbfaf7;z-index:3}
-table.recap tr.tot td{font-weight:700;background:#f3f1ec}
+table.recap td:first-child,table.recap th:first-child{border-right:2px solid var(--sep)}
+table.recap td:first-child,table.recap th:first-child{position:sticky;left:0;background:var(--panel);z-index:2;white-space:nowrap}
+table.recap th:first-child{background:var(--th-bg);z-index:3}
+table.recap tr.tot td{font-weight:700;background:var(--tot)}
 table.recap tr.sec td{border-right:0!important;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:12px;text-transform:uppercase}
-table.recap tr.sol td{background:#fbfaf7;color:var(--muted)}
+table.recap tr.sol td{background:var(--sol);color:var(--muted)}
 td input.in,td select.in{border:1px solid transparent;background:transparent;border-radius:6px;padding:3px 5px;width:100%;font-size:13px}
 td input.in:hover,td select.in:hover{border-color:var(--line)}
 td input.in:focus,td select.in:focus{border-color:var(--accent);background:#fff;outline:none}
@@ -127,6 +127,23 @@ select.rub.vide{background:var(--warn-soft);border-color:#efc9b3}
   table.opst td.lib,table.opst td.rb{grid-column:1/-1}
   table.opst td.rb select{border:1px solid var(--line);padding:5px}
 }
+/* thèmes */
+body[data-theme=bleu]{--accent:#2b5c8a;--accent-soft:#e3edf6;--th-bg:#d3e2f0;--th-fg:#1d4269;--bg:#f2f5f8;--side:#f7f9fb;--zebra:#f2f5f9;--hover:#e6edf4;--tot:#e9eff5;--sol:#f5f8fb;--line:#d9e1e9}
+body[data-theme=bordeaux]{--accent:#7b2f3f;--accent-soft:#f4e6e9;--th-bg:#ecd5da;--th-fg:#5a1f2c;--bg:#f7f2f1;--side:#fbf7f6;--zebra:#f8f1f0;--hover:#f0e4e4;--tot:#f2e8e7;--sol:#faf5f4;--line:#e8dadb}
+body[data-theme=ardoise]{--accent:#3f4b59;--accent-soft:#e6e9ed;--th-bg:#d8dde3;--th-fg:#2a333d;--bg:#f2f3f5;--side:#f7f8f9;--zebra:#f3f4f6;--hover:#e8eaee;--tot:#eceef1;--sol:#f6f7f8;--line:#dcdfe4}
+body[data-theme=sombre]{color-scheme:dark;--bg:#16181b;--panel:#1f2226;--ink:#e6e6e6;--muted:#9aa0a6;--line:#33373d;--accent:#6fbf9d;--accent-soft:#233b32;--warn:#e39a6f;--warn-soft:#3a2a20;--danger:#ef7d7d;--pos:#6fcf97;--neg:#f08b8b;
+  --sep:#4a5058;--th-bg:#26352f;--th-fg:#bfe3d2;--side:#1b1d21;--zebra:#23272c;--hover:#2b3036;--tot:#2a2e33;--sol:#202327}
+body[data-theme=sombre] .btn,body[data-theme=sombre] select.f,body[data-theme=sombre] input.f,body[data-theme=sombre] .modal,body[data-theme=sombre] .drop,body[data-theme=sombre] #rubPick,
+body[data-theme=sombre] .side-foot button,body[data-theme=sombre] .side-foot a,body[data-theme=sombre] .form input,body[data-theme=sombre] .form select,body[data-theme=sombre] .form textarea,body[data-theme=sombre] .pad button,
+body[data-theme=sombre] td input.in:focus,body[data-theme=sombre] td select.in:focus,body[data-theme=sombre] .rubbtn:hover{background:var(--panel);color:var(--ink);border-color:var(--line)}
+body[data-theme=sombre] .btn.pri{background:var(--accent);color:#10231b;border-color:var(--accent)}
+body[data-theme=sombre] .badge.b-grey{background:#2c3035;color:var(--muted)}body[data-theme=sombre] .b-err{background:#3d2424}
+body[data-theme=sombre] #rubPick mark{background:#6b5a1f}
+.themes{display:flex;gap:10px;flex-wrap:wrap}
+.themes button{display:flex;align-items:center;gap:8px;border:2px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:14px}
+.themes button.on{border-color:var(--accent);font-weight:700}
+.themes i{display:inline-block;width:22px;height:22px;border-radius:50%;border:1px solid rgba(0,0,0,.15)}
+@media print{body{--th-bg:#eee;--th-fg:#000}}
 #printZone{display:none}
 .rel{font:11px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#000}
 .rel h1{font-size:17px;margin:0}.rel .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}
@@ -143,6 +160,7 @@ select.rub.vide{background:var(--warn-soft);border-color:#efc9b3}
 </style>
 </head>
 <body>
+<script>try{document.body.dataset.theme=localStorage.getItem("mc-theme")||""}catch(e){}</script>
 <div class="app">
   <aside id="side">
     <div class="logo">Mes <span>Comptes</span></div>
@@ -1260,6 +1278,8 @@ function vReglages(){
    <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:10px"><input type="checkbox" id="xAlias" checked> Harmoniser les rubriques mal orthographiées (GOLF → SORTIES / LOISIRS / GOLF, PLACEMENT → PLACEMENTS…)</label>
    <div class="drop" id="xDrop">📊 Dépose ici ton classeur .xlsm (ou clique pour le choisir)<input type="file" id="xFile" accept=".xlsm,.xlsx" hidden></div>
    <div class="prog" id="xProg" style="display:none"><i></i></div><p id="xMsg"></p></div>
+  <div class="box"><h2>Thème</h2><div class="themes" id="themes">${[['','Vert','#2f5d50'],['bleu','Bleu','#2b5c8a'],['bordeaux','Bordeaux','#7b2f3f'],['ardoise','Ardoise','#3f4b59'],['sombre','Sombre','#16181b']].map(([k,l,c])=>`<button data-th="${k}" class="${(document.body.dataset.theme||'')===k?'on':''}"><i style="background:${c}"></i>${l}</button>`).join('')}</div>
+   <p class="muted" style="font-size:12.5px;margin:8px 0 0">Le thème est mémorisé sur cet appareil.</p></div>
   <div class="box"><h2>Sauvegarde</h2><p style="margin-top:0">Exporte toutes tes données (opérations, règles, rubriques, épargne, chèques) dans un fichier Excel.</p><button class="btn" id="bBackup">⬇ Tout exporter en Excel</button></div>`;
   const saveD=async patch=>{try{chk(await sb.from('cpt_dossiers').update(patch).eq('id',ds.id),'dossier');Object.assign(ds,patch);majDossierUI();toast('Dossier enregistré');vReglages()}catch(e){toast('Erreur : '+e.message)}};
   if($('#dNom'))$('#dNom').onchange=e=>e.target.value.trim()&&saveD({nom:e.target.value.trim()});
@@ -1278,6 +1298,7 @@ function vReglages(){
   ['dragenter','dragover'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.add('hot')}));['dragleave','drop'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.remove('hot')}));
   dr.addEventListener('drop',e=>{if(e.dataTransfer.files[0])importGGI(e.dataTransfer.files[0])});
   $('#bBackup').onclick=exportTout;
+  $('#themes').onclick=e=>{const b=e.target.closest('[data-th]');if(!b)return;document.body.dataset.theme=b.dataset.th;try{localStorage.setItem('mc-theme',b.dataset.th)}catch(_){}vReglages()};
 }
 const ALIAS={'golf':'SORTIES / LOISIRS / GOLF','sorties / loisirs':'SORTIES / LOISIRS / GOLF','placement':'PLACEMENTS','res':'RESTAURANT','restaurant gg':'RESTAURANT','cadeau coco':'CADEAU'};
 async function importGGI(file){
