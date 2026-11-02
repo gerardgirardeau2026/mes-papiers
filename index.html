@@ -173,6 +173,7 @@ table.imp tr.done-deja td{opacity:.55}
 <div class="app">
   <aside id="side">
     <div class="logo">Mes <span>Papiers</span></div>
+    <select id="dosSel" style="display:none;width:100%;margin:0 0 10px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fff;font-weight:600"></select>
     <div class="nav" id="nav"></div>
     <div class="side-foot">
       <div class="sync" id="syncBox"><span id="syncStat">☁️ Cloud non configuré</span><button id="bPc">Régler</button></div>
@@ -209,6 +210,7 @@ table.imp tr.done-deja td{opacity:.55}
         <div class="auto" id="autoInfo"></div>
         <label class="full">Intitulé *<input name="titre" required placeholder="ex. Facture électricité janvier"></label>
         <label>Catégorie<select name="categorie" id="selCat"></select></label>
+        <label id="lblDos" style="display:none">Dossier<select name="dossier" id="selDos"></select></label>
         <label>Organisme / fournisseur<input name="organisme" list="dlOrg" placeholder="EDF, MAAF, Crédit Agricole…"></label>
         <label>Date du document<input name="date" type="date"></label>
         <label>Montant (€)<input name="montant" type="number" step="0.01" placeholder="0,00"></label>
@@ -371,6 +373,9 @@ const dbDel=id=>tx('readwrite',s=>s.delete(id));
 
 /* ---------- état ---------- */
 let DOCS=[];
+let CURD=(()=>{try{return localStorage.getItem('mp-dossier')||'perso'}catch(e){return 'perso'}})(),DOSL=[];
+const DD=()=>DOCS.filter(d=>(d.dossier||'perso')===CURD);
+const dosNom=id=>(DOSL.find(x=>x.id===id)||{}).nom||(id==='perso'?'Perso':id);
 const st={view:'dash',q:'',annee:'',sort:'date',dir:-1};
 let editing=null, pending=[], detId=null, urls=[];
 
@@ -387,7 +392,7 @@ function echBadge(d){
 /* ---------- filtres ---------- */
 function filtered(){
   const q=st.q.trim().toLowerCase();
-  return DOCS.filter(d=>{
+  return DD().filter(d=>{
     if(st.view.startsWith('cat:') && d.categorie!==st.view.slice(4)) return false;
     if(st.view==='ech' && !d.echeance) return false;
     if(st.annee && (d.date||'').slice(0,4)!==st.annee) return false;
@@ -410,18 +415,18 @@ function sorted(list){
 
 /* ---------- rendu ---------- */
 function renderNav(){
-  const cnt=id=>DOCS.filter(d=>d.categorie===id).length;
-  const nEch=DOCS.filter(d=>d.echeance&&daysTo(d.echeance)<=60).length;
+  const DX=DD(),cnt=id=>DX.filter(d=>d.categorie===id).length;
+  const nEch=DX.filter(d=>d.echeance&&daysTo(d.echeance)<=60).length;
   const b=(v,label,n,dot)=>`<button data-v="${v}" class="${st.view===v?'on':''}">${dot?`<span class="dot" style="background:${dot}"></span>`:''}${label}<span class="n">${n??''}</span></button>`;
   $('#nav').innerHTML=
     b('dash','🏠 Tableau de bord')+
-    b('all','📄 Tous les documents',DOCS.length)+
+    b('all','📄 Tous les documents',DX.length)+
     b('ech','⏰ Échéances',nEch||'')+
     '<div class="nav-title">Catégories</div>'+
     CATS.map(c=>b('cat:'+c.id,esc(c.nom),cnt(c.id)||'',c.c)).join('');
 }
 function renderYears(){
-  const ys=[...new Set(DOCS.map(d=>(d.date||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  const ys=[...new Set(DD().map(d=>(d.date||'').slice(0,4)).filter(Boolean))].sort().reverse();
   $('#fAnnee').innerHTML='<option value="">Toutes années</option>'+ys.map(y=>`<option ${y===st.annee?'selected':''}>${y}</option>`).join('');
   $('#dlOrg').innerHTML=[...new Set(DOCS.map(d=>d.organisme).filter(Boolean))].sort().map(o=>`<option value="${esc(o)}">`).join('');
 }
@@ -433,17 +438,18 @@ function render(){
   renderList();
 }
 function renderDash(){
-  const ech=DOCS.filter(d=>d.echeance&&daysTo(d.echeance)<=60).sort((a,b)=>a.echeance<b.echeance?-1:1);
-  const byCat=CATS.map(c=>({c,n:DOCS.filter(d=>d.categorie===c.id).length})).filter(x=>x.n);
-  const mois=new Date().toISOString().slice(0,7),nMois=DOCS.filter(d=>(d.cree||'').slice(0,7)===mois).length;
-  const recent=DOCS.slice().sort((a,b)=>(b.cree||'')>(a.cree||'')?1:-1).slice(0,8);
-  if(!DOCS.length){
-    $('#view').innerHTML=`<div class="empty"><b>Aucun document pour l'instant</b>Clique sur « + Ajouter » ou « 📷 Scanner », ou glisse directement un PDF / une photo dans cette fenêtre.<br><br><button class="btn pri" onclick="openForm()">+ Ajouter mon premier document</button></div>`;
+  const DX=DD();
+  const ech=DX.filter(d=>d.echeance&&daysTo(d.echeance)<=60).sort((a,b)=>a.echeance<b.echeance?-1:1);
+  const byCat=CATS.map(c=>({c,n:DX.filter(d=>d.categorie===c.id).length})).filter(x=>x.n);
+  const mois=new Date().toISOString().slice(0,7),nMois=DX.filter(d=>(d.cree||'').slice(0,7)===mois).length;
+  const recent=DX.slice().sort((a,b)=>(b.cree||'')>(a.cree||'')?1:-1).slice(0,8);
+  if(!DX.length){
+    $('#view').innerHTML=`<div class="empty"><b>Aucun document${DOSL.length>1?' dans « '+esc(dosNom(CURD))+' »':''} pour l'instant</b>Clique sur « + Ajouter » ou « 📷 Scanner », ou glisse directement un PDF / une photo dans cette fenêtre.<br><br><button class="btn pri" onclick="openForm()">+ Ajouter mon premier document</button></div>`;
     return;
   }
   $('#view').innerHTML=`
   <div class="cards">
-    <div class="card"><div class="k">Documents classés</div><div class="v">${DOCS.length}</div></div>
+    <div class="card"><div class="k">Documents classés</div><div class="v">${DX.length}</div></div>
     <div class="card"><div class="k">Ajoutés ce mois-ci</div><div class="v">${nMois}</div></div>
     <div class="card"><div class="k">Échéances sous 60 jours</div><div class="v" style="color:${ech.length?'var(--warn)':'inherit'}">${ech.length}</div></div>
   </div>
@@ -487,6 +493,9 @@ function openForm(doc,files,canvas){
   f.querySelectorAll('input,select,textarea').forEach(el=>{delete el.dataset.touched;el.classList.remove('filled')});
   $('#formTitle').textContent=doc?'Modifier le document':'Nouveau document';
   pending=doc?(doc.fichiers||[]).slice():[];
+  $('#lblDos').style.display=DOSL.length>1?'':'none';
+  $('#selDos').innerHTML=(DOSL.length?DOSL:[{id:'perso',nom:'Perso'}]).map(x=>`<option value="${esc(x.id)}">${esc(x.nom)}</option>`).join('');
+  f.dossier.value=doc?.dossier||CURD;
   if(doc){for(const k of ['titre','categorie','organisme','date','montant','echeance','reference','notes']) f[k].value=doc[k]??'';f.tags.value=(doc.tags||[]).join(', ')}
   else{f.date.value=today();if(st.view.startsWith('cat:'))f.categorie.value=st.view.slice(4)}
   if(files) addFiles(files);
@@ -525,6 +534,7 @@ $('#bSave').onclick=async()=>{
     reference:f.reference.value.trim(), notes:f.notes.value.trim(),
     tags:f.tags.value.split(',').map(t=>t.trim()).filter(Boolean), fichiers:pending, _sync:''
   };
+  d.dossier=(f.dossier&&f.dossier.value)||editing?.dossier||CURD;d.dossierNom=dosNom(d.dossier);
   try{await dbPut(d)}catch(err){toast('Erreur d\'enregistrement : '+err.message);return}
   const i=DOCS.findIndex(x=>x.id===d.id); if(i>=0) DOCS[i]=d; else DOCS.push(d);
   hide('#ovForm');render();toast(editing?'Document modifié':'Document enregistré');syncSoon();
@@ -637,7 +647,7 @@ $('#fImport').onchange=async e=>{
   }catch(err){alert('Restauration impossible : '+err.message)}
 };
 $('#bCsv').onclick=()=>{
-  const list=st.view==='dash'?DOCS:filtered();
+  const list=st.view==='dash'?DD():filtered();
   const c=v=>`"${String(v??'').replace(/"/g,'""')}"`;
   const rows=[['Date','Intitulé','Catégorie','Organisme','Montant','Échéance','Référence','Mots-clés','Notes','Fichiers']]
     .concat(sorted(list).map(d=>[fdate(d.date),d.titre,CAT[d.categorie]?.nom,d.organisme,d.montant===''||d.montant==null?'':String(d.montant).replace('.',','),fdate(d.echeance),d.reference,(d.tags||[]).join(', '),d.notes,(d.fichiers||[]).map(f=>f.nom).join(' | ')]));
@@ -728,7 +738,7 @@ function findDates(n){
   return out.sort((a,b)=>a.i-b.i);
 }
 function parseAmt(s){const m=s.match(/(\d{1,3}(?:[ .]\d{3})+|\d+)\s?[,.]\s?(\d{2})(?!\d)/);if(!m)return null;const v=parseFloat(m[1].replace(/[ .]/g,'')+'.'+m[2]);return v>0&&v<1e6?v:null}
-function analyse(text,docs=DOCS){
+function analyse(text,docs=DD()){
   const n=norm(text),head=n.slice(0,700),r={};
   // fournisseur : celui qui apparaît le plus haut dans le document
   let best=null;for(const [re,nom,cat] of ORGS){const m=n.match(re);if(m&&(!best||m.index<best.i))best={i:m.index,nom,cat}}
@@ -876,7 +886,7 @@ $('#impSave').onclick=async()=>{
     const r=row.r,f=row.f,now=new Date().toISOString();
     const d={id:uid(),cree:now,modifie:now,titre:(r.titre||f.name).trim(),categorie:r.categorie||'divers',organisme:r.organisme||'',date:r.date||'',
       montant:r.montant===''||r.montant==null?'':+r.montant,echeance:r.echeance||'',reference:r.reference||'',tags:[],notes:'Importé de : '+row.path,
-      fichiers:[{id:uid(),nom:f.name,type:f.type||(/\.pdf$/i.test(f.name)?'application/pdf':'image/jpeg'),taille:f.size,blob:f}],_sync:''};
+      fichiers:[{id:uid(),nom:f.name,type:f.type||(/\.pdf$/i.test(f.name)?'application/pdf':'image/jpeg'),taille:f.size,blob:f}],_sync:'',dossier:CURD,dossierNom:dosNom(CURD)};
     try{await dbPut(d);DOCS.push(d);row.etat='fait';row.coche=false;n++;impUpd(row)}catch(e){toast('Erreur : '+e.message);break}
   }
   render();toast(`${n} document(s) enregistré(s)`+(server()?', envoi dans le cloud en cours':''));syncSoon();impFoot();
@@ -1135,7 +1145,7 @@ $('#pcOk').onclick=async()=>{
       if(error) throw error;
       const {data}=await sb.auth.getSession();sbUser=data.session?.user||null;
     }
-    hide('#ovPc');toast('Connecté au cloud');await askNewPin();lockBtn();sync();
+    hide('#ovPc');toast('Connecté au cloud');await askNewPin();lockBtn();sync();loadDosPapiers();
   }catch(e){msg.textContent='❌ '+FR_ERR(e.message||String(e))}
 };
 $('#sbSignup').onclick=async()=>{
@@ -1243,6 +1253,17 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){hiddenAt=D
 function lockBtn(){$('#bLock').style.display=pinSet()?'':'none'}
 $('#bLock').onclick=relock;
 
+/* ---------- dossiers (communs avec Mes Comptes) ---------- */
+async function loadDosPapiers(){
+  if(!sb||!sbUser)return;
+  try{const r=await sb.from('cpt_dossiers').select('id,nom,type,ordre').order('ordre',{ascending:true});if(r.error)throw r.error;DOSL=r.data||[]}catch(e){DOSL=[]}
+  if(DOSL.length&&!DOSL.some(x=>x.id===CURD))CURD='perso';
+  const sel=$('#dosSel');sel.style.display=DOSL.length>1?'':'none';
+  sel.innerHTML=DOSL.map(x=>`<option value="${esc(x.id)}" ${x.id===CURD?'selected':''}>${x.type==='sci'?'🏢':x.type==='gestion'?'👵':'🏠'} ${esc(x.nom)}</option>`).join('');
+  render();
+}
+$('#dosSel').onchange=e=>{CURD=e.target.value;try{localStorage.setItem('mp-dossier',CURD)}catch(_){}st.view='dash';render()};
+
 /* ---------- démarrage ---------- */
 (async()=>{
   if(pinSet()&&!(await resumeSession())) await openLock('unlock');
@@ -1250,7 +1271,7 @@ $('#bLock').onclick=relock;
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist();
   render();
   try{await sbClient()}catch(e){}
-  await askNewPin();lockBtn();
+  await askNewPin();lockBtn();loadDosPapiers();
   syncStatus();sync();
   const lb=localStorage.getItem('mp-last-backup');
   if(DOCS.length>5&&(!lb||daysTo(lb)<-30)) setTimeout(()=>toast('Pense à faire une sauvegarde (bouton 💾 à gauche)'),1200);

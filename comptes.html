@@ -143,6 +143,7 @@ select.rub.vide{background:var(--warn-soft);border-color:#efc9b3}
 <div class="app">
   <aside id="side">
     <div class="logo">Mes <span>Comptes</span></div>
+    <select id="dosSel" class="f" style="width:100%;margin:0 0 10px;font-weight:600"></select>
     <div class="nav" id="nav">
       <button data-v="dash">🏠 Tableau de bord</button>
       <button data-v="ops">📒 Opérations<span class="n" id="nClasser"></span></button>
@@ -151,6 +152,10 @@ select.rub.vide{background:var(--warn-soft);border-color:#efc9b3}
       <button data-v="recap">📅 Récap mensuel</button>
       <button data-v="annuel">📊 Récap annuel & budget</button>
       <button data-v="epargne">🏦 Épargne</button>
+      <div class="sci-only" style="display:none"><div class="nav-title">SCI</div>
+      <button data-v="biens">🏢 Biens & loyers</button>
+      <button data-v="quittances">🧾 Quittances</button>
+      <button data-v="d2072">📑 Déclaration 2072</button></div>
       <div class="nav-title">Gestion</div>
       <button data-v="cheques">✍️ Chèques</button>
       <button data-v="regles">🔀 Règles de classement</button>
@@ -323,21 +328,36 @@ async function sbClient(){
   sb.auth.onAuthStateChange((_e,s)=>{sbUser=s?.user||null});
   return sb;
 }
+/* dossiers : chaque table « cpt_ » est filtrée sur le dossier courant */
+let CUR=LS.get('mc-dossier','perso'),DOSSIERS=[],SANS_DOSSIER=false;
+const dossier=()=>DOSSIERS.find(d=>d.id===CUR)||{id:CUR,nom:'Perso',type:'perso',infos:{}};
+const addD=r=>SANS_DOSSIER?r:Array.isArray(r)?r.map(x=>({...x,dossier:CUR})):{...r,dossier:CUR};
+function T(table){
+  const f=sb.from(table),w=q=>SANS_DOSSIER?q:q.eq('dossier',CUR);
+  return {select:(c='*')=>w(f.select(c)),insert:r=>f.insert(addD(r)),upsert:(r,o)=>f.upsert(addD(r),o),update:v=>w(f.update(v)),delete:()=>w(f.delete())};
+}
+async function loadDossiers(){
+  const r=await sb.from('cpt_dossiers').select('*').order('ordre',{ascending:true});
+  if(r.error){SANS_DOSSIER=true;DOSSIERS=[{id:'perso',nom:'Perso',type:'perso',infos:{}}];CUR='perso';return}
+  SANS_DOSSIER=false;DOSSIERS=r.data;
+  if(!DOSSIERS.some(d=>d.id==='perso')){const {data}=chk(await sb.from('cpt_dossiers').insert({id:'perso',nom:'Perso',type:'perso',ordre:0}).select(),'dossier');DOSSIERS.unshift(data[0])}
+  if(!DOSSIERS.some(d=>d.id===CUR))CUR='perso';
+}
 function chk(res,etape){if(res&&res.error){const e=new Error(res.error.message||String(res.error));e.etape=etape;throw e}return res}
 async function fetchAll(table,orders){
   const out=[];let from=0;
-  for(;;){let q=sb.from(table).select('*');for(const o of orders)q=q.order(o,{ascending:true});const {data}=chk(await q.range(from,from+999),'lecture '+table);out.push(...data);if(data.length<1000)break;from+=1000}
+  for(;;){let q=T(table).select('*');for(const o of orders)q=q.order(o,{ascending:true});const {data}=chk(await q.range(from,from+999),'lecture '+table);out.push(...data);if(data.length<1000)break;from+=1000}
   return out;
 }
 async function insertBatch(table,rows,prog){
   const out=[];
-  for(let i=0;i<rows.length;i+=500){const {data}=chk(await sb.from(table).insert(rows.slice(i,i+500)).select(),'écriture '+table);out.push(...data);if(prog)prog(Math.min(rows.length,i+500),rows.length)}
+  for(let i=0;i<rows.length;i+=500){const {data}=chk(await T(table).insert(rows.slice(i,i+500)).select(),'écriture '+table);out.push(...data);if(prog)prog(Math.min(rows.length,i+500),rows.length)}
   return out;
 }
 const num=v=>v==null||v===''?null:+v;
 
 /* =================== données =================== */
-const D={comptes:[],ops:[],rubs:[],regles:[],epargne:[],cheques:[]};
+const D={comptes:[],ops:[],rubs:[],regles:[],epargne:[],cheques:[],biens:[],annexes:[]};
 let RUB=new Map();   // nom minuscule -> rubrique
 let REG=[];          // règles triées
 let dataVer=0;
@@ -360,7 +380,9 @@ async function loadAll(){
   const [comptes,ops,rubs,regles,epargne,cheques]=await Promise.all([
     fetchAll('cpt_comptes',['ordre']),fetchAll('cpt_operations',['date','cree']),fetchAll('cpt_rubriques',['ordre']),
     fetchAll('cpt_regles',['ordre']),fetchAll('cpt_epargne',['annee','ordre','mois']),fetchAll('cpt_cheques',['numero'])]);
-  Object.assign(D,{comptes,ops,rubs,regles,epargne,cheques});index();
+  let biens=[],annexes=[];
+  if(!SANS_DOSSIER&&dossier().type==='sci'){[biens,annexes]=await Promise.all([fetchAll('cpt_biens',['ordre']),fetchAll('cpt_annexes',['annee'])])}
+  Object.assign(D,{comptes,ops,rubs,regles,epargne,cheques,biens,annexes});index();
 }
 function soldeAvant(cid,dateExcl){const c=compte(cid);let s=+(c?.solde_initial||0);for(const o of D.ops){if(o.compte!==cid)continue;if(o.date>=dateExcl)break;s+=o.montant}return Math.round(s*100)/100}
 function soldeActuel(cid){return soldeAvant(cid,'9999-12-31')}
@@ -423,17 +445,47 @@ function suggestMotif(lib){
 
 /* =================== navigation =================== */
 const goA=f=>`data-go="${esc(JSON.stringify(Object.assign({compte:'',annee:'',mois:'',rub:'',q:''},f)))}"`;
-document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g&&!e.target.closest('input,select,button:not([data-go])'))go('ops',JSON.parse(g.dataset.go))});
+document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(!g||e.target.closest('input,select,button:not([data-go])'))return;e.preventDefault();
+  if(st.view!=='ops'){const tw=$('#view .tw');st.from={view:st.view,y:window.scrollY,t:tw?tw.scrollTop:0,annee:st.annee}}
+  go('ops',JSON.parse(g.dataset.go))});
+const ORIGINE={recap:'Récap mensuel',annuel:'Récap annuel',dash:'Tableau de bord',regles:'Règles',reglages:'Réglages'};
+function retour(){const f=st.from;st.from=null;if(!f)return;st.annee=f.annee;go(f.view);setTimeout(()=>{const tw=$('#view .tw');if(tw)tw.scrollTop=f.t;window.scrollTo(0,f.y)},30)}
 const st={view:'dash',annee:new Date().getFullYear(),f:{compte:'',annee:String(new Date().getFullYear()),mois:'',rub:'',q:''},lim:300};
-const TITRES={dash:'Tableau de bord',ops:'Opérations',import:'Importer un relevé',recap:'Récap mensuel',annuel:'Récap annuel & budget',epargne:'Épargne',cheques:'Chèques',regles:'Règles de classement',rubriques:'Rubriques',reglages:'Comptes & réglages'};
+const TITRES={biens:'Biens & loyers',quittances:'Quittances',d2072:'Déclaration 2072',dash:'Tableau de bord',ops:'Opérations',import:'Importer un relevé',recap:'Récap mensuel',annuel:'Récap annuel & budget',epargne:'Épargne',cheques:'Chèques',regles:'Règles de classement',rubriques:'Rubriques',reglages:'Comptes & réglages'};
 function go(v,f){closePick();if(v!=='regles')MAJ=null;$('#view').dataset.v='';st.view=v;if(f)Object.assign(st.f,f);st.lim=300;render();$('#side').classList.remove('open');window.scrollTo(0,0)}
-$('#nav').onclick=e=>{const b=e.target.closest('button[data-v]');if(b){MAJ=null;go(b.dataset.v)}};
+$('#nav').onclick=e=>{const b=e.target.closest('button[data-v]');if(b){MAJ=null;st.from=null;go(b.dataset.v)}};
 $('#bMenu').onclick=()=>$('#side').classList.toggle('open');
+function majDossierUI(){
+  const sel=$('#dosSel');sel.style.display=SANS_DOSSIER?'none':'';
+  sel.innerHTML=DOSSIERS.map(d=>`<option value="${esc(d.id)}" ${d.id===CUR?'selected':''}>${d.type==='sci'?'🏢':d.type==='gestion'?'👵':'🏠'} ${esc(d.nom)}</option>`).join('')+'<option value="__new">＋ Nouveau dossier…</option>';
+  document.querySelector('.sci-only').style.display=dossier().type==='sci'?'':'none';
+  document.title='Mes Comptes · '+dossier().nom;
+}
+$('#dosSel').onchange=async e=>{
+  const v=e.target.value;
+  if(v==='__new'){e.target.value=CUR;return nouveauDossier()}
+  await changerDossier(v);
+};
+async function changerDossier(id){
+  CUR=id;LS.set('mc-dossier',id);IMP=null;MAJ=null;st.from=null;docsCache=null;majDossierUI();
+  $('#view').innerHTML='<div class="empty">Chargement du dossier…</div>';
+  try{await loadAll()}catch(err){$('#view').innerHTML=`<div class="empty"><b>Impossible de charger ce dossier</b>${esc(err.message)}</div>`;return}
+  if(!['dash','ops','import','recap','annuel','epargne','cheques','regles','rubriques','reglages'].includes(st.view)&&dossier().type!=='sci')st.view='dash';
+  st.f={compte:'',annee:String(new Date().getFullYear()),mois:'',rub:'',q:''};go(st.view);
+}
+async function nouveauDossier(){
+  const nom=(prompt('Nom du nouveau dossier (ex. SCI MAX ET LILI, Maman…)')||'').trim();if(!nom)return;
+  const t=(prompt('Type de dossier :\n1 = Perso\n2 = SCI (biens, loyers, quittances, 2072)\n3 = Gestion pour un proche','1')||'').trim();
+  const type=t==='2'?'sci':t==='3'?'gestion':'perso';
+  let id=norm(nom).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'dossier',k=2;while(DOSSIERS.some(d=>d.id===id))id=id.replace(/-\d+$/,'')+'-'+(k++);
+  try{const {data}=chk(await sb.from('cpt_dossiers').insert({id,nom,type,ordre:DOSSIERS.length}).select(),'dossier');DOSSIERS.push(data[0]);await changerDossier(id);go('reglages');toast('Dossier « '+nom+' » créé : reprends son classeur Excel ici')}
+  catch(e){toast('Erreur : '+e.message)}
+}
 function render(){
   document.querySelectorAll('#nav button[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===st.view));
   $('#title').textContent=TITRES[st.view];$('#tools').innerHTML='';
   if(!sbUser) return renderLogin();
-  ({dash:vDash,ops:vOps,import:vImport,recap:vRecap,annuel:vAnnuel,epargne:vEpargne,cheques:vCheques,regles:vRegles,rubriques:vRubriques,reglages:vReglages})[st.view]();
+  ({biens:vBiens,quittances:vQuittances,d2072:vD2072,dash:vDash,ops:vOps,import:vImport,recap:vRecap,annuel:vAnnuel,epargne:vEpargne,cheques:vCheques,regles:vRegles,rubriques:vRubriques,reglages:vReglages})[st.view]();
 }
 function yearSelect(val,id='selAn',extra=[]){const ys=[...new Set([...annees(),...extra])].sort((a,b)=>b-a);return `<select class="f" id="${id}">${ys.map(y=>`<option ${+y===+val?'selected':''}>${y}</option>`).join('')}</select>`}
 
@@ -459,7 +511,7 @@ function totaux(annee,mois){ // recettes / dépenses classées
 function vDash(){
   const y=st.annee,inY=D.ops.filter(o=>+o.date.slice(0,4)===y),m=inY.length?+inY[inY.length-1].date.slice(5,7):12;
   $('#tools').innerHTML=yearSelect(y);$('#selAn').onchange=e=>{st.annee=+e.target.value;render()};
-  if(!D.comptes.length){$('#view').innerHTML=`<div class="empty"><b>Bienvenue dans Mes Comptes</b>Commence par reprendre ton classeur Excel : <a href="#" onclick="go('reglages');return false">Comptes & réglages → Importer mon classeur GGI</a>.</div>`;return}
+  if(!D.comptes.length){$('#view').innerHTML=`<div class="empty"><b>Dossier « ${esc(dossier().nom)} » vide</b>Commence par reprendre son classeur Excel : <a href="#" onclick="go('reglages');return false">Comptes & réglages → Importer mon classeur GGI</a>.</div>`;return}
   const tA=totaux(y),tM=totaux(y,m),nC=D.ops.filter(aClasser).length;
   const mens=Array.from({length:12},(_,i)=>totaux(y,i+1)),mx=Math.max(1,...mens.map(t=>Math.max(t.r,t.d)));
   $('#view').innerHTML=`
@@ -497,7 +549,7 @@ function filtreOps(){
 }
 function vOps(){
   const f=st.f;
-  $('#tools').innerHTML=`<button class="btn" id="bRel">🖨 Relevé</button><button class="btn" id="bExpOps">⬇ Excel</button><button class="btn pri" id="bAddOp">+ Opération</button>`;
+  $('#tools').innerHTML=(st.from&&ORIGINE[st.from.view]?`<button class="btn" id="bRet" style="border-color:var(--accent);color:var(--accent);font-weight:600">← Retour : ${ORIGINE[st.from.view]}</button>`:'')+`<button class="btn" id="bRel">🖨 Relevé</button><button class="btn" id="bExpOps">⬇ Excel</button><button class="btn pri" id="bAddOp">+ Opération</button>`;
   const ys=annees();
   const list=filtreOps(),single=f.compte&&compte(f.compte)?.suivi_solde;
   let solde=null;if(single&&list.length)solde=soldeAvant(f.compte,list[0].date);
@@ -524,14 +576,14 @@ function vOps(){
   let qt;$('#fQ').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{st.f.q=e.target.value;st.lim=300;vOps();const i=$('#fQ');i.focus();i.setSelectionRange(i.value.length,i.value.length)},300)};
   if($('#bMore'))$('#bMore').onclick=()=>{st.lim+=500;vOps()};
   $('#bAddOp').onclick=()=>openOp(null);
-  $('#bRel').onclick=openReleve;
+  $('#bRel').onclick=openReleve;if($('#bRet'))$('#bRet').onclick=retour;
   $('#bExpOps').onclick=()=>exportXlsx([['Date','Compte','Libellé','Montant','Rubrique','Note'],...list.map(o=>[o.date,cNom(o.compte),o.libelle,o.montant,o.rubrique,o.note||''])],'Operations','operations');
   $('#view').querySelectorAll('[data-edit]').forEach(td=>td.onclick=()=>openOp(D.ops.find(o=>o.id===td.dataset.edit)));
   $('#view').querySelectorAll('.rubbtn[data-rub]').forEach(b=>b.onclick=()=>{const o=D.ops.find(x=>x.id===b.dataset.rub);
     pickRub(b,o.rubrique,async v=>{if(norm(v)===norm(o.rubrique))return;await changeRub(o,v,b);b.textContent=rubOf(v)?.nom||'— à classer —';b.classList.toggle('vide',aClasser(o))},o.montant)});
 }
 async function changeRub(o,rub,sel){
-  try{chk(await sb.from('cpt_operations').update({rubrique:rub}).eq('id',o.id),'classement')}catch(e){toast('Erreur : '+e.message);return}
+  try{chk(await T('cpt_operations').update({rubrique:rub}).eq('id',o.id),'classement')}catch(e){toast('Erreur : '+e.message);return}
   o.rubrique=rub;if(sel)sel.classList.toggle('vide',aClasser(o));index();
   if(!rub)return;
   const motif=suggestMotif(o.libelle);if(!motif)return;
@@ -546,10 +598,10 @@ async function changeRub(o,rub,sel){
 }
 async function addRegle(motif,rub){
   const ordre=Math.min(0,...D.regles.map(r=>r.ordre))-1;
-  const {data}=chk(await sb.from('cpt_regles').insert({motif,rubrique:rub,ordre}).select(),'règle');D.regles.push(data[0]);index();
+  const {data}=chk(await T('cpt_regles').insert({motif,rubrique:rub,ordre}).select(),'règle');D.regles.push(data[0]);index();
 }
 async function bulkRub(ops,rub){
-  for(let i=0;i<ops.length;i+=200){const part=ops.slice(i,i+200);chk(await sb.from('cpt_operations').update({rubrique:rub}).in('id',part.map(o=>o.id)),'classement');part.forEach(o=>o.rubrique=rub)}
+  for(let i=0;i<ops.length;i+=200){const part=ops.slice(i,i+200);chk(await T('cpt_operations').update({rubrique:rub}).in('id',part.map(o=>o.id)),'classement');part.forEach(o=>o.rubrique=rub)}
   index();
 }
 let docsCache=null;
@@ -564,9 +616,10 @@ async function openOp(o){
   show('#ovOp');
   try{
     if(!docsCache){const {data}=chk(await sb.from('docs').select('id,data').eq('supprime',false).range(0,9999),'docs');docsCache=data.map(r=>({id:r.id,...r.data}))}
+    const docsD=docsCache.filter(d=>(d.dossier||'perso')===CUR);
     const mt=Math.abs(+f.montant.value||0),dt=f.date.value;
     const score=d=>(d.montant!==''&&d.montant!=null&&Math.abs(Math.abs(+d.montant)-mt)<0.01?0:1000)+(d.date&&dt?Math.abs((new Date(d.date)-new Date(dt))/864e5):500);
-    const list=docsCache.slice().sort((a,b)=>score(a)-score(b));
+    const list=docsD.slice().sort((a,b)=>score(a)-score(b));
     $('#opDoc').innerHTML='<option value="">— aucun —</option>'+list.slice(0,200).map(d=>`<option value="${esc(d.id)}">${score(d)<1000?'★ ':''}${esc(d.titre||'')} · ${fdate(d.date)}${d.montant?' · '+eur(d.montant):''}</option>`).join('');
     if(o?.doc_id){$('#opDoc').value=o.doc_id;$('#opDocLink').innerHTML=`<a href="index.html#doc-${encodeURIComponent(o.doc_id)}">📎 Ouvrir le justificatif dans Mes Papiers</a>`}
   }catch(e){$('#opDocLink').innerHTML='<span class="muted">Justificatifs indisponibles.</span>'}
@@ -576,14 +629,14 @@ $('#opSave').onclick=async()=>{
   const v={compte:f.compte.value,date:f.date.value,libelle:f.libelle.value.trim(),montant:Math.round(+f.montant.value*100)/100,rubrique:f.rubrique.value,note:f.note.value.trim()||null,doc_id:f.doc_id.value||null};
   const id=f.dataset.id;
   try{
-    if(id){chk(await sb.from('cpt_operations').update(v).eq('id',id),'enregistrement');Object.assign(D.ops.find(o=>o.id===id),v)}
-    else{const {data}=chk(await sb.from('cpt_operations').insert(v).select(),'enregistrement');D.ops.push(data[0])}
+    if(id){chk(await T('cpt_operations').update(v).eq('id',id),'enregistrement');Object.assign(D.ops.find(o=>o.id===id),v)}
+    else{const {data}=chk(await T('cpt_operations').insert(v).select(),'enregistrement');D.ops.push(data[0])}
   }catch(e){toast('Erreur : '+e.message);return}
   index();hide('#ovOp');render();toast('Opération enregistrée');
 };
 $('#opDel').onclick=async()=>{
   const id=$('#opForm').dataset.id;if(!id||!confirm('Supprimer cette opération ?'))return;
-  try{chk(await sb.from('cpt_operations').delete().eq('id',id),'suppression')}catch(e){toast('Erreur : '+e.message);return}
+  try{chk(await T('cpt_operations').delete().eq('id',id),'suppression')}catch(e){toast('Erreur : '+e.message);return}
   D.ops=D.ops.filter(o=>o.id!==id);index();hide('#ovOp');render();toast('Opération supprimée');
 };
 
@@ -839,7 +892,7 @@ function vAnnuel(){
   </tbody></table></div>`;
   $('#view').querySelectorAll('[data-b]').forEach(i=>i.onchange=async()=>{
     const r=rubOf(i.dataset.b),v=pNum(i.value);
-    try{chk(await sb.from('cpt_rubriques').update({budget:v}).eq('nom',r.nom),'budget');r.budget=v;vAnnuel();toast('Budget enregistré')}catch(e){toast('Erreur : '+e.message)}
+    try{chk(await T('cpt_rubriques').update({budget:v}).eq('nom',r.nom),'budget');r.budget=v;vAnnuel();toast('Budget enregistré')}catch(e){toast('Erreur : '+e.message)}
   });
 }
 
@@ -866,13 +919,13 @@ function vEpargne(){
   };
   $('#view').querySelectorAll('[data-s]').forEach(i=>i.onchange=async()=>{const s=i.dataset.s;await epSet(s,+i.dataset.m,pNum(i.value),rows.find(e=>e.support===s)?.ordre??0);vEpargne();const n=$(`[data-s="${CSS.escape(s)}"][data-m="${Math.min(12,+i.dataset.m+1)}"]`);if(n)n.focus()});
   $('#view').querySelectorAll('[data-ren]').forEach(i=>i.onchange=async()=>{const o=i.dataset.ren,n=i.value.trim();if(!n||n===o)return;
-    try{chk(await sb.from('cpt_epargne').update({support:n}).eq('annee',epAn).eq('support',o),'renommage');D.epargne.forEach(e=>{if(e.annee===epAn&&e.support===o)e.support=n});toast('Support renommé')}catch(e){toast('Erreur : '+e.message)}vEpargne()});
+    try{chk(await T('cpt_epargne').update({support:n}).eq('annee',epAn).eq('support',o),'renommage');D.epargne.forEach(e=>{if(e.annee===epAn&&e.support===o)e.support=n});toast('Support renommé')}catch(e){toast('Erreur : '+e.message)}vEpargne()});
   $('#view').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const s=b.dataset.del;if(!confirm(`Supprimer « ${s} » pour ${epAn} ?`))return;
-    try{chk(await sb.from('cpt_epargne').delete().eq('annee',epAn).eq('support',s),'suppression');D.epargne=D.epargne.filter(e=>!(e.annee===epAn&&e.support===s))}catch(e){toast('Erreur : '+e.message)}vEpargne()});
+    try{chk(await T('cpt_epargne').delete().eq('annee',epAn).eq('support',s),'suppression');D.epargne=D.epargne.filter(e=>!(e.annee===epAn&&e.support===s))}catch(e){toast('Erreur : '+e.message)}vEpargne()});
 }
 async function epSet(support,mois,montant,ordre){
   const row={annee:epAn,support,mois,montant,ordre};
-  try{chk(await sb.from('cpt_epargne').upsert(row,{onConflict:'user_id,annee,support,mois'}),'épargne');
+  try{chk(await T('cpt_epargne').upsert(row,{onConflict:SANS_DOSSIER?'user_id,annee,support,mois':'user_id,dossier,annee,support,mois'}),'épargne');
     const e=D.epargne.find(e=>e.annee===epAn&&e.support===support&&e.mois===mois);if(e)Object.assign(e,row);else D.epargne.push(row)}catch(e){toast('Erreur : '+e.message)}
 }
 
@@ -895,9 +948,9 @@ function vCheques(){
     <td><button class="ib" data-cdel="${c.id}">✕</button></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty">Aucun chèque enregistré pour ce compte.</div>'}`;
   $('#chF').onsubmit=async e=>{e.preventDefault();const f=e.target;
     const v={compte:chqC,numero:f.numero.value.trim(),date:f.date.value||null,beneficiaire:f.beneficiaire.value.trim(),montant:pNum(f.montant.value),rubrique:f.rubrique.value};
-    try{const {data}=chk(await sb.from('cpt_cheques').insert(v).select(),'chèque');D.cheques.push(data[0]);vCheques();toast('Chèque ajouté')}catch(err){toast('Erreur : '+err.message)}};
+    try{const {data}=chk(await T('cpt_cheques').insert(v).select(),'chèque');D.cheques.push(data[0]);vCheques();toast('Chèque ajouté')}catch(err){toast('Erreur : '+err.message)}};
   $('#view').querySelectorAll('[data-cdel]').forEach(b=>b.onclick=async()=>{if(!confirm('Supprimer ce chèque ?'))return;
-    try{chk(await sb.from('cpt_cheques').delete().eq('id',b.dataset.cdel),'suppression');D.cheques=D.cheques.filter(c=>c.id!==b.dataset.cdel);vCheques()}catch(e){toast('Erreur : '+e.message)}});
+    try{chk(await T('cpt_cheques').delete().eq('id',b.dataset.cdel),'suppression');D.cheques=D.cheques.filter(c=>c.id!==b.dataset.cdel);vCheques()}catch(e){toast('Erreur : '+e.message)}});
 }
 
 /* =================== règles =================== */
@@ -943,7 +996,7 @@ function vRegles(){
   let t;$('#rgQ').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{rgQ=e.target.value;vRegles();const i=$('#rgQ');i.focus();i.setSelectionRange(i.value.length,i.value.length)},300)};
   $('#rgPb').onchange=e=>{rgPb=e.target.checked;vRegles()};
   $('#rgF').onsubmit=async e=>{e.preventDefault();try{await addRegle(e.target.motif.value.trim(),e.target.rubrique.value);toast('Règle ajoutée');vRegles()}catch(err){toast('Erreur : '+err.message)}};
-  const upd=async(id,patch)=>{try{chk(await sb.from('cpt_regles').update(patch).eq('id',id),'règle');Object.assign(D.regles.find(r=>r.id===id),patch);index();toast('Règle modifiée');vRegles()}catch(e){toast('Erreur : '+e.message)}};
+  const upd=async(id,patch)=>{try{chk(await T('cpt_regles').update(patch).eq('id',id),'règle');Object.assign(D.regles.find(r=>r.id===id),patch);index();toast('Règle modifiée');vRegles()}catch(e){toast('Erreur : '+e.message)}};
   $('#view').querySelectorAll('[data-m]').forEach(i=>i.onchange=()=>i.value.trim()&&upd(i.dataset.m,{motif:i.value.trim()}));
   $('#view').querySelectorAll('[data-r]').forEach(i=>i.onchange=()=>upd(i.dataset.r,{rubrique:i.value}));
   $('#view').querySelectorAll('[data-top]').forEach(b=>b.onclick=()=>upd(b.dataset.top,{ordre:Math.min(0,...D.regles.map(r=>r.ordre))-1}));
@@ -961,7 +1014,7 @@ function vRegles(){
   };
 }
 async function delRegles(ids){
-  for(let i=0;i<ids.length;i+=200){const part=ids.slice(i,i+200);chk(await sb.from('cpt_regles').delete().in('id',part),'suppression')}
+  for(let i=0;i<ids.length;i+=200){const part=ids.slice(i,i+200);chk(await T('cpt_regles').delete().in('id',part),'suppression')}
   const s=new Set(ids);D.regles=D.regles.filter(r=>!s.has(r.id));index();
 }
 function vMaj(){
@@ -1003,34 +1056,194 @@ function vRubriques(){
    ${inconnues.map(([k,n])=>{const nom=D.ops.find(o=>norm(o.rubrique)===k).rubrique;return `<div class="filters" style="margin:4px 0"><b style="min-width:180px">${esc(nom)}</b><span class="muted">${n} op.</span> → <select class="f" data-merge="${esc(nom)}">${rubOptions('',false)}</select></div>`}).join('')}</div>`:''}`;
   const v=$('#view');
   v.querySelectorAll('[data-ren]').forEach(i=>i.onchange=()=>renRub(i.dataset.ren,i.value.trim()));
-  v.querySelectorAll('[data-type]').forEach(s=>s.onchange=async()=>{const r=rubOf(s.dataset.type);try{chk(await sb.from('cpt_rubriques').update({type:s.value}).eq('nom',r.nom),'rubrique');r.type=s.value;index();vRubriques()}catch(e){toast('Erreur : '+e.message)}});
+  v.querySelectorAll('[data-type]').forEach(s=>s.onchange=async()=>{const r=rubOf(s.dataset.type);try{chk(await T('cpt_rubriques').update({type:s.value}).eq('nom',r.nom),'rubrique');r.type=s.value;index();vRubriques()}catch(e){toast('Erreur : '+e.message)}});
   const move=async(nom,d)=>{const r=rubOf(nom),l=D.rubs.filter(x=>x.type===r.type),i=l.indexOf(r),o=l[i+d];if(!o)return;
     const a=r.ordre===o.ordre?(d>0?r.ordre+1:r.ordre-1):o.ordre,b=r.ordre;
-    try{chk(await sb.from('cpt_rubriques').update({ordre:a}).eq('nom',r.nom),'ordre');chk(await sb.from('cpt_rubriques').update({ordre:b}).eq('nom',o.nom),'ordre');r.ordre=a;o.ordre=b;index();vRubriques()}catch(e){toast('Erreur : '+e.message)}};
+    try{chk(await T('cpt_rubriques').update({ordre:a}).eq('nom',r.nom),'ordre');chk(await T('cpt_rubriques').update({ordre:b}).eq('nom',o.nom),'ordre');r.ordre=a;o.ordre=b;index();vRubriques()}catch(e){toast('Erreur : '+e.message)}};
   v.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>move(b.dataset.up,-1));
   v.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>move(b.dataset.down,1));
   v.querySelectorAll('[data-add]').forEach(f=>f.onsubmit=async e=>{e.preventDefault();const nom=f.nom.value.trim();if(rubOf(nom))return toast('Cette rubrique existe déjà');
-    const ordre=Math.max(0,...D.rubs.map(r=>r.ordre))+1;try{const {data}=chk(await sb.from('cpt_rubriques').insert({nom,type:f.dataset.add,ordre}).select(),'rubrique');D.rubs.push(data[0]);index();vRubriques()}catch(err){toast('Erreur : '+err.message)}});
+    const ordre=Math.max(0,...D.rubs.map(r=>r.ordre))+1;try{const {data}=chk(await T('cpt_rubriques').insert({nom,type:f.dataset.add,ordre}).select(),'rubrique');D.rubs.push(data[0]);index();vRubriques()}catch(err){toast('Erreur : '+err.message)}});
   v.querySelectorAll('[data-rdel]').forEach(b=>b.onclick=async()=>{const r=rubOf(b.dataset.rdel),n=use.get(norm(r.nom))||0;
     if(n&&!confirm(`${n} opération(s) utilisent « ${r.nom} ». Elles passeront « à classer ». Supprimer quand même ?`))return;
     if(!n&&!confirm(`Supprimer « ${r.nom} » ?`))return;
-    try{chk(await sb.from('cpt_rubriques').delete().eq('nom',r.nom),'suppression');D.rubs=D.rubs.filter(x=>x!==r);index();vRubriques()}catch(e){toast('Erreur : '+e.message)}});
+    try{chk(await T('cpt_rubriques').delete().eq('nom',r.nom),'suppression');D.rubs=D.rubs.filter(x=>x!==r);index();vRubriques()}catch(e){toast('Erreur : '+e.message)}});
   v.querySelectorAll('[data-merge]').forEach(s=>s.onchange=async()=>{const from=s.dataset.merge,to=s.value;if(!to)return;const ops=D.ops.filter(o=>o.rubrique===from);await bulkRub(ops,to);toast(`${ops.length} opération(s) passées en ${to}`);vRubriques()});
 }
 async function renRub(old,nu){
   if(!nu||nu===old)return;if(rubOf(nu)&&norm(nu)!==norm(old)){toast('Cette rubrique existe déjà');return vRubriques()}
   try{
-    chk(await sb.from('cpt_rubriques').update({nom:nu}).eq('nom',old),'renommage');
+    chk(await T('cpt_rubriques').update({nom:nu}).eq('nom',old),'renommage');
     const ops=D.ops.filter(o=>norm(o.rubrique)===norm(old));await bulkRub(ops,nu);
-    const regs=D.regles.filter(r=>norm(r.rubrique)===norm(old));if(regs.length){chk(await sb.from('cpt_regles').update({rubrique:nu}).in('id',regs.map(r=>r.id)),'règles');regs.forEach(r=>r.rubrique=nu)}
+    const regs=D.regles.filter(r=>norm(r.rubrique)===norm(old));if(regs.length){chk(await T('cpt_regles').update({rubrique:nu}).in('id',regs.map(r=>r.id)),'règles');regs.forEach(r=>r.rubrique=nu)}
     rubOf(old).nom=nu;index();toast(`Rubrique renommée (${ops.length} opérations, ${regs.length} règles)`);
   }catch(e){toast('Erreur : '+e.message)}
   vRubriques();
 }
 
+/* =================== SCI : biens, loyers, quittances, 2072 =================== */
+const tvaDef=()=>(dossier().infos||{}).tva===false?0:20;
+const ttc=b=>Math.round(((+b.loyer_hc||0)+(+b.charges||0))*(1+(+b.tva||0)/100)*100)/100;
+const ym=(y,m)=>`${y}-${String(m).padStart(2,'0')}`;
+const finMois=(y,m)=>iso(new Date(y,m,0));
+function actif(b,y,m){const a=ym(y,m)+'-01',z=finMois(y,m);return (!b.debut||b.debut<=z)&&(!b.fin||b.fin>=a)}
+function recu(b,y,m){const k=ym(y,m),r=norm(b.rubrique);const ops=D.ops.filter(o=>o.montant>0&&norm(o.rubrique)===r&&o.date.slice(0,7)===k);return {s:Math.round(ops.reduce((t,o)=>t+o.montant,0)*100)/100,ops}}
+const moisMax=y=>y<new Date().getFullYear()?12:y>new Date().getFullYear()?0:new Date().getMonth()+1;
+// le mois en cours n'est contrôlé que 10 jours après l'échéance
+const echu=(b,y,m)=>{const n=new Date();return !(y===n.getFullYear()&&m===n.getMonth()+1&&n.getDate()<=(+b.jour||1)+10)};
+function detecteBiens(){
+  const deja=new Set(D.biens.map(b=>norm(b.rubrique)));
+  return D.rubs.filter(r=>r.type==='recette'&&!deja.has(norm(r.nom))).map(r=>{
+    const cr=D.ops.filter(o=>o.montant>0&&norm(o.rubrique)===norm(r.nom)).slice(-8);if(cr.length<3)return null;
+    const f=new Map();cr.forEach(o=>f.set(o.montant,(f.get(o.montant)||0)+1));const [mt,n]=[...f].sort((a,b)=>b[1]-a[1])[0];
+    const last=cr[cr.length-1].libelle;let loc=last.includes(':')?last.split(':')[0]:last.replace(/^(VIR(EMENT)?( INST| SEPA| RECU)?|PRLV( SEPA)?)\s+/i,'');
+    loc=loc.split(/\s+/).filter(w=>!/\d{3,}/.test(w)).slice(0,5).join(' ').trim();
+    return {rub:r.nom,loc,mt,regulier:n>=3,ok:n>=3};
+  }).filter(Boolean);
+}
+function vBiens(){
+  const y=st.annee;$('#tools').innerHTML=yearSelect(y)+`<button class="btn pri" id="bAddB">+ Bien</button>`;$('#selAn').onchange=e=>{st.annee=+e.target.value;render()};
+  const det=detecteBiens(),loc=D.biens.filter(b=>b.mode==='location'),mm=moisMax(y);
+  const cell=(b,m)=>{if(!actif(b,y,m))return `<td class="num muted">—</td>`;const e=ttc(b),r=recu(b,y,m).s;
+    if(m>mm||!echu(b,y,m))return `<td class="num muted" title="à venir">${r?eur0(r):''}</td>`;
+    const c=r>=e-0.01?'b-ok':r>0?'b-warn':'b-err';
+    return `<td class="num" ${goA({annee:String(y),mois:String(m),rub:b.rubrique})} style="cursor:pointer" title="attendu ${eur(e)} · reçu ${eur(r)}"><span class="badge ${c}">${r?eur0(r):'0'}</span></td>`};
+  const bilan=b=>{let e=0,r=0;for(let m=1;m<=mm;m++)if(actif(b,y,m)&&echu(b,y,m)){e+=ttc(b);r+=recu(b,y,m).s}return {e,r,d:Math.round((e-r)*100)/100}};
+  const alertes=[];loc.forEach(b=>{for(let m=1;m<=mm;m++)if(actif(b,y,m)&&echu(b,y,m)){const e=ttc(b),r=recu(b,y,m).s;if(e&&r<e-0.01)alertes.push(`<li><b>${esc(b.nom)}</b> (${esc(b.locataire||'')}) · ${MOIS[m-1].toLowerCase()} ${y} : ${r?`${eur(r)} reçus sur ${eur(e)}`:'rien reçu'}, <b class="neg">reste ${eur(e-r)}</b></li>`)}});
+  const inp=(b,k,w,t='text')=>`<input class="in ${t==='number'?'num':''}" data-b="${b.id}" data-k="${k}" type="${t}" ${t==='number'?'step="0.01"':''} value="${esc(b[k]??'')}" style="width:${w}px">`;
+  $('#view').innerHTML=`
+  ${det.length?`<div class="box" style="border-color:#b9d3c6"><h2>Biens repérés dans tes opérations</h2><p class="muted" style="margin-top:-6px;font-size:13px">Ces rubriques de recettes reçoivent des versements réguliers. Coche celles qui sont des loyers pour créer les biens (tu complèteras ensuite adresses et montants).</p>
+    ${det.map((d,i)=>`<label style="display:flex;gap:10px;align-items:center;padding:4px 0;font-size:14px"><input type="checkbox" data-det="${i}" ${d.ok?'checked':''}><b style="min-width:150px">${esc(d.rub)}</b><span class="muted">locataire probable :</span> ${esc(d.loc)} <span class="muted">· versement habituel</span> ${eur(d.mt)}</label>`).join('')}
+    <button class="btn pri" id="bDet" style="margin-top:8px">Créer les biens cochés</button></div>`:''}
+  ${alertes.length?`<div class="box" style="border-color:#efc9b3;background:var(--warn-soft)"><h2>⚠ Loyers impayés ou incomplets ${y}</h2><ul style="margin:0;padding-left:18px">${alertes.join('')}</ul></div>`:''}
+  ${loc.length?`<div class="box"><h2>Suivi des loyers ${y} <span class="muted" style="font-weight:400;font-size:12.5px">(montants TTC reçus · vert = payé, orange = incomplet, rouge = rien reçu)</span></h2>
+    <div class="tw" style="box-shadow:none"><table class="recap"><thead><tr><th>Bien</th>${MOISC.map(x=>`<th class="num">${x}</th>`).join('')}<th class="num">Attendu</th><th class="num">Reçu</th><th class="num">Reste dû</th></tr></thead><tbody>
+    ${loc.map(b=>{const t=bilan(b);return `<tr><td><b>${esc(b.nom)}</b><div class="muted" style="font-size:11.5px">${esc(b.locataire||'')} · ${eur(ttc(b))}/mois</div></td>${MOISC.map((_,i)=>cell(b,i+1)).join('')}<td class="num">${eur0(t.e)}</td><td class="num">${eur0(t.r)}</td><td class="num ${t.d>0.01?'neg':'pos'}"><b>${eur(t.d)}</b></td></tr>`}).join('')}
+    </tbody></table></div></div>`:''}
+  <div class="box"><h2>Mes biens</h2>${D.biens.length?`<div class="tw" style="box-shadow:none"><table><thead><tr><th>Nom</th><th>Mode</th><th>Adresse du bien</th><th>Rubrique des loyers</th><th>Locataire</th><th>Adresse du locataire</th><th class="num">Loyer HT</th><th class="num">Charges HT</th><th class="num">TVA %</th><th class="num">TTC / mois</th><th class="num">Jour</th><th>Début bail</th><th>Fin</th><th></th></tr></thead><tbody>
+    ${D.biens.map(b=>`<tr><td>${inp(b,'nom',130)}</td><td><select class="in" data-b="${b.id}" data-k="mode" style="min-width:125px"><option value="location" ${b.mode==='location'?'selected':''}>Location</option><option value="nue-propriete" ${b.mode!=='location'?'selected':''}>Nue-propriété</option></select></td>
+      <td>${inp(b,'adresse',190)}</td><td><select class="in" data-b="${b.id}" data-k="rubrique"><option value="">—</option>${D.rubs.filter(r=>r.type==='recette').map(r=>`<option ${norm(r.nom)===norm(b.rubrique)?'selected':''}>${esc(r.nom)}</option>`).join('')}</select></td>
+      <td>${inp(b,'locataire',160)}</td><td>${inp(b,'adresse_loc',190)}</td><td>${inp(b,'loyer_hc',85,'number')}</td><td>${inp(b,'charges',75,'number')}</td><td>${inp(b,'tva',50,'number')}</td>
+      <td class="num"><b>${b.mode==='location'?eur(ttc(b)):''}</b></td><td>${inp(b,'jour',40,'number')}</td><td>${inp(b,'debut',125,'date')}</td><td>${inp(b,'fin',125,'date')}</td><td><button class="ib" data-bdel="${b.id}">✕</button></td></tr>`).join('')}
+    </tbody></table></div>`:'<p class="muted">Aucun bien pour l\'instant.</p>'}
+    <p class="muted" style="font-size:12.5px;margin:8px 0 0">« Nue-propriété » : bien sans loyer pour la SCI (ex. Broz Optique), non suivi dans les loyers. Les loyers reçus sont repérés grâce à la « rubrique des loyers ».</p></div>`;
+  $('#bAddB').onclick=()=>saveBien({nom:'Nouveau bien',mode:'location',tva:tvaDef(),jour:1,ordre:D.biens.length});
+  if($('#bDet'))$('#bDet').onclick=async()=>{const sel=det.filter((d,i)=>$(`[data-det="${i}"]`).checked);const tv=tvaDef();
+    for(const [i,d] of sel.entries())await saveBien({nom:d.rub,mode:'location',rubrique:d.rub,locataire:d.loc,loyer_hc:Math.round(d.mt/(1+tv/100)*100)/100,charges:0,tva:tv,jour:1,ordre:D.biens.length+i},true);
+    toast(sel.length+' bien(s) créé(s) : vérifie loyers, adresses et dates');vBiens()};
+  $('#view').querySelectorAll('[data-b]').forEach(i=>i.onchange=async()=>{const b=D.biens.find(x=>x.id===i.dataset.b),k=i.dataset.k;
+    let v=i.value.trim();if(['loyer_hc','charges','tva'].includes(k))v=pNum(v);if(k==='jour')v=parseInt(v)||1;if(['debut','fin'].includes(k))v=v||null;
+    try{chk(await T('cpt_biens').update({[k]:v}).eq('id',b.id),'bien');b[k]=v;vBiens()}catch(e){toast('Erreur : '+e.message)}});
+  $('#view').querySelectorAll('[data-bdel]').forEach(x=>x.onclick=async()=>{if(!confirm('Supprimer ce bien ? (les opérations ne sont pas touchées)'))return;
+    try{chk(await T('cpt_biens').delete().eq('id',x.dataset.bdel),'bien');D.biens=D.biens.filter(b=>b.id!==x.dataset.bdel);vBiens()}catch(e){toast('Erreur : '+e.message)}});
+}
+async function saveBien(v,silent){try{const {data}=chk(await T('cpt_biens').insert(v).select(),'bien');D.biens.push(data[0]);if(!silent)vBiens()}catch(e){toast('Erreur : '+e.message)}}
+
+/* quittances */
+let qB='',qY=new Date().getFullYear(),qM=new Set([new Date().getMonth()+1]);
+function vQuittances(){
+  const loc=D.biens.filter(b=>b.mode==='location');
+  if(!loc.length){$('#view').innerHTML=`<div class="empty"><b>Aucun bien loué</b>Crée d'abord tes biens dans <a href="#" onclick="go('biens');return false">Biens & loyers</a>.</div>`;return}
+  if(!loc.some(b=>b.id===qB))qB=loc[0].id;const b=D.biens.find(x=>x.id===qB),inf=dossier().infos||{};
+  const manque=[!inf.siege&&'adresse du siège',!inf.gerant&&'gérant',!b.adresse&&'adresse du bien',!b.adresse_loc&&'adresse du locataire'].filter(Boolean);
+  $('#view').innerHTML=`<div class="box">
+    <div class="filters" style="margin:0 0 10px"><label>Bien <select class="f" id="qB">${loc.map(x=>`<option value="${x.id}" ${x.id===qB?'selected':''}>${esc(x.nom)} · ${esc(x.locataire||'')}</option>`).join('')}</select></label>
+      <label>Année ${yearSelect(qY,'qY')}</label></div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;max-width:640px">${MOIS.map((m,i)=>{const r=recu(b,qY,i+1).s,e=ttc(b),ok=actif(b,qY,i+1);
+      return `<label style="display:flex;gap:6px;align-items:center;font-size:13px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;${ok?'':'opacity:.4'}"><input type="checkbox" data-qm="${i+1}" ${qM.has(i+1)?'checked':''} ${ok?'':'disabled'}>${MOISC[i]} <span class="badge ${r>=e-0.01?'b-ok':r>0?'b-warn':'b-grey'}" style="margin-left:auto;font-size:10.5px">${r>=e-0.01?'payé':r>0?'partiel':'—'}</span></label>`}).join('')}</div>
+    <div class="filters" style="margin:10px 0 0"><button class="btn sm" data-qs="paye">Tous les mois payés</button><button class="btn sm" data-qs="aucun">Aucun</button><button class="btn pri" id="qGo" style="margin-left:auto">🖨 Imprimer ${qM.size} document(s)</button></div>
+    <p class="muted" style="font-size:12.5px;margin:10px 0 0">Mois entièrement payé → <b>quittance de loyer</b> · paiement incomplet → <b>reçu partiel</b> (une quittance ne peut pas être délivrée tant que tout n'est pas payé) · rien reçu → <b>avis d'échéance</b>. Pour un PDF : « Enregistrer au format PDF » dans la fenêtre d'impression.</p>
+    ${manque.length?`<p style="margin:8px 0 0"><span class="badge b-warn">À compléter : ${manque.join(', ')}</span> dans <a href="#" onclick="go('reglages');return false">Réglages</a> / <a href="#" onclick="go('biens');return false">Biens</a></p>`:''}</div>`;
+  $('#qB').onchange=e=>{qB=e.target.value;vQuittances()};$('#qY').onchange=e=>{qY=+e.target.value;vQuittances()};
+  $('#view').querySelectorAll('[data-qm]').forEach(c=>c.onchange=()=>{c.checked?qM.add(+c.dataset.qm):qM.delete(+c.dataset.qm);vQuittances()});
+  $('#view').querySelectorAll('[data-qs]').forEach(x=>x.onclick=()=>{qM=new Set(x.dataset.qs==='paye'?MOIS.map((_,i)=>i+1).filter(m=>actif(b,qY,m)&&recu(b,qY,m).s>=ttc(b)-0.01):[]);vQuittances()});
+  $('#qGo').onclick=()=>{if(!qM.size)return toast('Coche au moins un mois');
+    $('#printZone').innerHTML=`<div class="rel">${[...qM].sort((a,c)=>a-c).map(m=>quittanceHTML(b,qY,m)).join('')}</div>`;
+    document.body.classList.add('printing');setTimeout(()=>{window.print();setTimeout(()=>document.body.classList.remove('printing'),500)},100)};
+}
+function quittanceHTML(b,y,m){
+  const inf=dossier().infos||{},e=ttc(b),{s:r,ops}=recu(b,y,m),hc=+b.loyer_hc||0,ch=+b.charges||0,tv=+b.tva||0,tva=Math.round((hc+ch)*tv)/100;
+  const type=r>=e-0.01?'QUITTANCE DE LOYER':r>0?'REÇU DE PAIEMENT PARTIEL':"AVIS D'ÉCHÉANCE";
+  const per=`du 01/${String(m).padStart(2,'0')}/${y} au ${fdate(finMois(y,m))}`,e2=v=>eur(v).replace(/ | /g,' ');
+  const dern=ops.length?ops[ops.length-1].date:null;
+  return `<div class="sec" style="font-size:12.5px;line-height:1.55;max-width:680px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:26px"><div><b style="font-size:14px">${esc(inf.raison||dossier().nom)}</b><br>${esc(inf.siege||'')}${inf.siren?`<br>SIREN ${esc(inf.siren)}`:''}</div>
+      <div style="text-align:right;min-width:230px"><b>${esc(b.locataire||'')}</b><br>${esc(b.adresse_loc||'').replace(/,\s*/g,'<br>')}</div></div>
+    <h1 style="font-size:19px;text-align:center;margin:10px 0 4px">${type}</h1><p style="text-align:center;margin:0 0 20px">Période ${per}</p>
+    <p><b>Local loué :</b> ${esc(b.nom)}${b.adresse?' · '+esc(b.adresse):''}</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0"><tbody>
+      <tr><td>Loyer hors taxes</td><td class="n">${e2(hc)}</td></tr>
+      ${ch?`<tr><td>Provision pour charges hors taxes</td><td class="n">${e2(ch)}</td></tr>`:''}
+      ${tv?`<tr><td>TVA ${String(tv).replace('.',',')} %</td><td class="n">${e2(tva)}</td></tr>`:''}
+      <tr class="s"><td>Total ${tv?'TTC ':''}dû pour la période</td><td class="n">${e2(e)}</td></tr>
+      ${r?`<tr><td>Montant reçu${dern?' (dernier versement le '+fdate(dern)+')':''}</td><td class="n">${e2(r)}</td></tr>`:''}
+      ${r<e-0.01?`<tr class="s"><td>Reste dû</td><td class="n">${e2(e-r)}</td></tr>`:''}
+    </tbody></table>
+    ${type==='QUITTANCE DE LOYER'?`<p>Je soussigné(e) ${esc(inf.gerant||'……………')}, agissant pour le compte de ${esc(inf.raison||dossier().nom)}, bailleur, reconnais avoir reçu de ${esc(b.locataire||'……')} la somme de <b>${e2(r)}</b> au titre du loyer et des charges de la période ${per}, et lui en donne quittance, sous réserve de tous mes droits.</p>`
+      :type.startsWith('REÇU')?`<p>Reçu de ${esc(b.locataire||'……')} la somme de <b>${e2(r)}</b> à valoir sur le loyer et les charges de la période ${per}. Ce reçu ne vaut pas quittance : il reste dû <b>${e2(e-r)}</b>.</p>`
+      :`<p>Nous vous remercions de bien vouloir régler la somme de <b>${e2(e)}</b> au titre du loyer et des charges de la période ${per}${b.jour?`, payable le ${b.jour} ${MOIS[m-1].toLowerCase()} ${y}`:''}.</p>`}
+    <p style="margin-top:28px">Fait à ${esc(inf.ville||'……………')}, le ${fdate(today())}</p>
+    <p style="margin-top:6px">Pour ${esc(inf.raison||dossier().nom)}, ${esc(inf.gerant||'le gérant')}</p>
+    <p class="pied" style="margin-top:40px">${type==='QUITTANCE DE LOYER'?'Cette quittance annule tous les reçus qui auraient pu être donnés pour acompte sur la période.':''}</p></div>`;
+}
+
+/* déclaration 2072 */
+const C2072=[
+ ['loyers','Loyers bruts encaissés (hors TVA)','r'],['recdiv','Recettes diverses (remboursements, indemnités…)','r'],
+ ['admin',"Frais d'administration et de gestion (comptable, frais bancaires…)",'c'],['assur',"Primes d'assurance",'c'],
+ ['travaux',"Travaux de réparation, d'entretien et d'amélioration",'c'],['impots','Impositions (taxe foncière…)','c'],
+ ['copro','Provisions pour charges de copropriété','c'],['emprunt',"Échéances d'emprunt (seuls les intérêts comptent, saisis ci-dessous)",'x'],['exclu','Non concerné (TVA, placements, virements…)','x']];
+function cat2072(r){
+  if(r.ligne2072)return r.ligne2072;const n=norm(r.nom);
+  if(D.biens.some(b=>norm(b.rubrique)===n))return 'loyers';
+  if(/pret|emprunt/.test(n))return 'emprunt';if(/tva|placement|cpt|virement|caution|^cc\d|compte courant/.test(n))return 'exclu';
+  if(/assur/.test(n))return 'assur';if(/foncier|impot|cfe/.test(n))return 'impots';if(/copro/.test(n))return 'copro';
+  if(/travaux|jardin|entretien|reparation|maison/.test(n))return 'travaux';if(/comptab|frais|honorai|gestion|banc|financ/.test(n))return 'admin';
+  return r.type==='recette'?'recdiv':'exclu';
+}
+function vD2072(){
+  const y=st.annee;$('#tools').innerHTML=yearSelect(y)+`<button class="btn" onclick="print()">🖨 Imprimer</button>`;$('#selAn').onchange=e=>{st.annee=+e.target.value;render()};
+  const tvaOf=rub=>{const b=D.biens.find(x=>norm(x.rubrique)===norm(rub));return b?+b.tva||0:tvaDef()};
+  const tot={},det={};C2072.forEach(([k])=>{tot[k]=0;det[k]=[]});
+  for(const r of D.rubs){const k=cat2072(r);if(r.type==='ignore')continue;
+    const ops=D.ops.filter(o=>+o.date.slice(0,4)===y&&norm(o.rubrique)===norm(r.nom));if(!ops.length)continue;
+    let v=ops.reduce((s,o)=>s+o.montant,0);if(C2072.find(c=>c[0]===k)[2]==='c'||k==='emprunt')v=-v;
+    if(k==='loyers')v=v/(1+tvaOf(r.nom)/100);
+    tot[k]+=v;det[k].push([r.nom,v])}
+  const nLoc=D.biens.filter(b=>b.mode==='location'&&MOIS.some((_,i)=>actif(b,y,i+1))).length,forfait=20*nLoc;
+  const empr=D.rubs.filter(r=>cat2072(r)==='emprunt'),ann=k=>D.annexes.find(a=>a.annee===y&&a.cle===k)?.valeur;
+  const inter=empr.reduce((s,r)=>s+(+ann('interets:'+r.nom)||0),0);
+  const rec=tot.loyers+tot.recdiv,chg=tot.admin+tot.assur+tot.travaux+tot.impots+tot.copro+forfait+inter,net=rec-chg;
+  const row=(lab,v,k,b)=>`<tr${b?' class="tot"':''}><td>${lab}${k&&det[k].length?`<div class="muted" style="font-size:11.5px">${det[k].map(([n,x])=>`<span class="clic" ${goA({annee:String(y),rub:n})}>${esc(n)} ${eur0(x)}</span>`).join(' · ')}</div>`:''}</td><td class="num">${eur(v)}</td></tr>`;
+  $('#view').innerHTML=`<p class="muted" style="margin-top:0;font-size:13px">Aide à la préparation de la <b>déclaration 2072-S</b> (revenus fonciers ${y} de la SCI), calculée à partir de tes opérations classées. À vérifier avec ton comptable avant dépôt. ${tvaDef()?'La SCI étant à la TVA, les loyers sont repris hors taxes ; si la SCI récupère la TVA sur ses dépenses, les charges doivent aussi être déclarées hors taxes.':''}</p>
+  <div class="grid2"><div class="box"><h2>Résultat foncier ${y}</h2><div class="tw" style="box-shadow:none"><table class="recap"><tbody>
+    <tr class="sec"><td colspan="2">Recettes</td></tr>${row('Loyers bruts encaissés (hors TVA)',tot.loyers,'loyers')}${row('Recettes diverses',tot.recdiv,'recdiv')}${row('Total des recettes',rec,null,1)}
+    <tr class="sec"><td colspan="2">Frais et charges</td></tr>${row("Frais d'administration et de gestion",tot.admin,'admin')}${row(`Frais de gestion forfaitaires (20 € × ${nLoc} ${nLoc>1?'locaux':'local'})`,forfait)}${row("Primes d'assurance",tot.assur,'assur')}
+    ${row("Travaux de réparation, d'entretien et d'amélioration",tot.travaux,'travaux')}${row('Impositions',tot.impots,'impots')}${row('Provisions pour charges de copropriété',tot.copro,'copro')}${row("Intérêts d'emprunt",inter)}
+    ${row('Total des frais et charges',chg,null,1)}
+    <tr class="tot"><td>${net>=0?'Bénéfice foncier':'Déficit foncier'}</td><td class="num ${net<0?'neg':'pos'}">${eur(net)}</td></tr></tbody></table></div></div>
+  <div class="box"><h2>Intérêts d'emprunt ${y}</h2><p class="muted" style="font-size:12.5px;margin-top:-6px">Seuls les intérêts sont déductibles. Reporte le total des intérêts de l'année indiqué sur l'attestation annuelle ou le tableau d'amortissement de chaque prêt.</p>
+    ${empr.length?empr.map(r=>{const paye=-D.ops.filter(o=>+o.date.slice(0,4)===y&&norm(o.rubrique)===norm(r.nom)).reduce((s,o)=>s+o.montant,0);
+      return `<div class="filters" style="margin:6px 0"><b style="min-width:110px">${esc(r.nom)}</b><span class="muted" style="font-size:13px">échéances payées ${eur(paye)} · dont intérêts :</span><input class="f" data-int="${esc(r.nom)}" value="${ann('interets:'+r.nom)??''}" placeholder="0,00" style="width:110px" inputmode="decimal"> €</div>`}).join(''):'<p class="muted">Aucune rubrique d\'emprunt repérée (classe tes rubriques ci-dessous).</p>'}
+    <h2 style="margin-top:18px">Classement des rubriques</h2><p class="muted" style="font-size:12.5px;margin-top:-6px">Chaque rubrique est rangée dans une ligne de la déclaration. Corrige si besoin, c'est mémorisé.</p>
+    <div class="tw" style="box-shadow:none;max-height:420px"><table><tbody>${D.rubs.filter(r=>r.type!=='ignore').map(r=>`<tr><td>${esc(r.nom)}${r.ligne2072?'':' <span class="muted" style="font-size:11px">(proposé)</span>'}</td><td><select class="in" data-l2="${esc(r.nom)}">${C2072.map(([k,l])=>`<option value="${k}" ${cat2072(r)===k?'selected':''}>${l}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div></div></div>`;
+  $('#view').querySelectorAll('[data-int]').forEach(i=>i.onchange=async()=>{const cle='interets:'+i.dataset.int,v=pNum(i.value);
+    try{chk(await T('cpt_annexes').upsert({annee:y,cle,valeur:v},{onConflict:'user_id,dossier,annee,cle'}),'intérêts');const a=D.annexes.find(a=>a.annee===y&&a.cle===cle);if(a)a.valeur=v;else D.annexes.push({annee:y,cle,valeur:v});vD2072()}catch(e){toast('Erreur : '+e.message)}});
+  $('#view').querySelectorAll('[data-l2]').forEach(s=>s.onchange=async()=>{const r=rubOf(s.dataset.l2);try{chk(await T('cpt_rubriques').update({ligne2072:s.value}).eq('nom',r.nom),'2072');r.ligne2072=s.value;vD2072()}catch(e){toast('Erreur : '+e.message)}});
+}
+
 /* =================== comptes & réglages =================== */
 function vReglages(){
-  $('#view').innerHTML=`<div class="box"><h2>Mes comptes</h2>
+  const ds=dossier(),inf=ds.infos||{};
+  $('#view').innerHTML=(SANS_DOSSIER?`<div class="box" style="border-color:#efc9b3;background:var(--warn-soft)"><b>Dossiers non activés.</b> Pour gérer plusieurs dossiers (SCI, belle-maman…), exécute le script <b>3-dossiers.sql</b> dans Supabase puis recharge la page.</div>`:`<div class="box"><h2>Dossier</h2>
+   <div class="filters" style="margin:0"><label>Nom <input class="f" id="dNom" value="${esc(ds.nom)}"></label>
+   <label>Type <select class="f" id="dType"><option value="perso" ${ds.type==='perso'?'selected':''}>🏠 Perso</option><option value="sci" ${ds.type==='sci'?'selected':''}>🏢 SCI</option><option value="gestion" ${ds.type==='gestion'?'selected':''}>👵 Gestion pour un proche</option></select></label>
+   ${ds.id!=='perso'?'<button class="btn dan" id="dDel" style="margin-left:auto">Supprimer ce dossier</button>':''}</div>
+   ${ds.type==='sci'?`<h2 style="margin-top:16px">Coordonnées de la SCI (pour les quittances)</h2><div class="form" id="dInf" style="grid-template-columns:1fr 1fr">
+     <label>Raison sociale<input data-inf="raison" value="${esc(inf.raison||ds.nom)}"></label><label>N° SIREN<input data-inf="siren" value="${esc(inf.siren||'')}"></label>
+     <label class="full">Adresse du siège<input data-inf="siege" value="${esc(inf.siege||'')}"></label>
+     <label>Gérant(e)<input data-inf="gerant" value="${esc(inf.gerant||'')}"></label><label>Ville (pour « Fait à… »)<input data-inf="ville" value="${esc(inf.ville||'')}"></label>
+     <label class="full" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" data-inf="tva" ${inf.tva!==false?'checked':''} style="width:auto"> La SCI a opté pour la TVA sur les loyers</label></div>`:''}</div>`)+`<div class="box"><h2>Mes comptes</h2>
    <div class="tw" style="box-shadow:none"><table><thead><tr><th>Code</th><th>Nom</th><th>Banque</th><th class="num">Solde de départ</th><th>Suivre le solde</th><th class="num">Ordre</th><th class="num">Solde actuel</th></tr></thead><tbody>
    ${D.comptes.map(c=>`<tr><td><b>${esc(c.id)}</b></td><td><input class="in" data-c="${c.id}" data-k="nom" value="${esc(c.nom)}"></td><td><input class="in" data-c="${c.id}" data-k="banque" value="${esc(c.banque||'')}"></td>
      <td><input class="in num" data-c="${c.id}" data-k="solde_initial" value="${c.solde_initial}" style="width:110px"></td><td><input type="checkbox" data-c="${c.id}" data-k="suivi_solde" ${c.suivi_solde?'checked':''}></td>
@@ -1038,18 +1251,26 @@ function vReglages(){
    </tbody></table></div>
    <form class="filters" id="cF" style="margin:12px 0 0"><input class="f" name="id" placeholder="Code (ex. CPT5)" required style="width:120px"><input class="f" name="nom" placeholder="Nom du compte" required><input class="f" name="banque" placeholder="Banque"><button class="btn">Ajouter un compte</button></form>
    <p class="muted" style="font-size:13px;margin:8px 0 0">« Suivre le solde » : décoche pour les cartes à débit différé (leur total arrive sur le compte courant).</p></div>
-  <div class="box"><h2>Reprendre mon classeur Excel (GGI)</h2>
-   <p style="margin-top:0">Dépose ton fichier <b>B-GGIV4.xlsm</b> : je reprends les comptes (feuille BANQUE), toutes les opérations (CPT1, CPT2…), les rubriques (RUBRIQUE), les règles de classement (BDD), l'épargne (EPARGNE) et les chèques (CHEQUE…).</p>
-   <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:10px"><input type="checkbox" id="xRepl" ${D.ops.length?'':'checked'}> Remplacer toutes les données actuelles de Mes Comptes</label>
+  <div class="box"><h2>Reprendre un classeur Excel (GGI) dans « ${esc(dossier().nom)} »</h2>
+   <p style="margin-top:0">Dépose le classeur de ce dossier (<b>B-GGIV4</b>, <b>B-MAXETLILIV4</b>, <b>B-MAMIEV3</b>…) : je reprends les comptes (feuille BANQUE), toutes les opérations (CPT1, CPT2…), les rubriques (RUBRIQUE), les règles de classement (BDD), l'épargne (EPARGNE) et les chèques (CHEQUE…).</p>
+   <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:10px"><input type="checkbox" id="xRepl" ${D.ops.length?'':'checked'}> Remplacer les données actuelles de ce dossier</label>
    <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:10px"><input type="checkbox" id="xAlias" checked> Harmoniser les rubriques mal orthographiées (GOLF → SORTIES / LOISIRS / GOLF, PLACEMENT → PLACEMENTS…)</label>
    <div class="drop" id="xDrop">📊 Dépose ici ton classeur .xlsm (ou clique pour le choisir)<input type="file" id="xFile" accept=".xlsm,.xlsx" hidden></div>
    <div class="prog" id="xProg" style="display:none"><i></i></div><p id="xMsg"></p></div>
   <div class="box"><h2>Sauvegarde</h2><p style="margin-top:0">Exporte toutes tes données (opérations, règles, rubriques, épargne, chèques) dans un fichier Excel.</p><button class="btn" id="bBackup">⬇ Tout exporter en Excel</button></div>`;
+  const saveD=async patch=>{try{chk(await sb.from('cpt_dossiers').update(patch).eq('id',ds.id),'dossier');Object.assign(ds,patch);majDossierUI();toast('Dossier enregistré');vReglages()}catch(e){toast('Erreur : '+e.message)}};
+  if($('#dNom'))$('#dNom').onchange=e=>e.target.value.trim()&&saveD({nom:e.target.value.trim()});
+  if($('#dType'))$('#dType').onchange=async e=>{await saveD({type:e.target.value});await changerDossier(CUR);go('reglages')};
+  $('#view').querySelectorAll('[data-inf]').forEach(i=>i.onchange=()=>saveD({infos:{...(ds.infos||{}),[i.dataset.inf]:i.type==='checkbox'?i.checked:i.value.trim()}}));
+  if($('#dDel'))$('#dDel').onclick=async()=>{
+    if(prompt(`Supprimer le dossier « ${ds.nom} » et TOUTES ses données (opérations, règles, rubriques…) ?\nTape SUPPRIMER pour confirmer.`)!=='SUPPRIMER')return;
+    try{for(const t of ['cpt_operations','cpt_regles','cpt_epargne','cpt_cheques','cpt_rubriques','cpt_comptes','cpt_biens','cpt_annexes'])chk(await T(t).delete().eq('user_id',sbUser.id),'effacement '+t);
+      chk(await sb.from('cpt_dossiers').delete().eq('id',ds.id),'dossier');DOSSIERS=DOSSIERS.filter(d=>d!==ds);toast('Dossier supprimé');await changerDossier('perso');go('dash')}catch(e){toast('Erreur : '+e.message)}};
   $('#view').querySelectorAll('[data-c]').forEach(i=>i.onchange=async()=>{
     const c=compte(i.dataset.c),k=i.dataset.k,v=k==='suivi_solde'?i.checked:k==='solde_initial'?(pNum(i.value)||0):k==='ordre'?(parseInt(i.value)||0):i.value.trim();
-    try{chk(await sb.from('cpt_comptes').update({[k]:v}).eq('id',c.id),'compte');c[k]=v;index();toast('Compte modifié');vReglages()}catch(e){toast('Erreur : '+e.message)}});
+    try{chk(await T('cpt_comptes').update({[k]:v}).eq('id',c.id),'compte');c[k]=v;index();toast('Compte modifié');vReglages()}catch(e){toast('Erreur : '+e.message)}});
   $('#cF').onsubmit=async e=>{e.preventDefault();const f=e.target;const v={id:f.id.value.trim().toUpperCase(),nom:f.nom.value.trim(),banque:f.banque.value.trim(),ordre:D.comptes.length+1,solde_initial:0,suivi_solde:true};
-    if(compte(v.id))return toast('Ce code existe déjà');try{const {data}=chk(await sb.from('cpt_comptes').insert(v).select(),'compte');D.comptes.push(data[0]);index();vReglages()}catch(err){toast('Erreur : '+err.message)}};
+    if(compte(v.id))return toast('Ce code existe déjà');try{const {data}=chk(await T('cpt_comptes').insert(v).select(),'compte');D.comptes.push(data[0]);index();vReglages()}catch(err){toast('Erreur : '+err.message)}};
   const dr=$('#xDrop');dr.onclick=()=>$('#xFile').click();$('#xFile').onchange=e=>{if(e.target.files[0])importGGI(e.target.files[0]);e.target.value=''};
   ['dragenter','dragover'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.add('hot')}));['dragleave','drop'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.remove('hot')}));
   dr.addEventListener('drop',e=>{if(e.dataTransfer.files[0])importGGI(e.dataTransfer.files[0])});
@@ -1074,11 +1295,11 @@ async function importGGI(file){
     B.forEach((r,i)=>{const id=String(r[1]??'').trim();if(/^CPT\d+$/i.test(id)&&S(id))comptes.push({id:id.toUpperCase(),nom:String(r[2]??id).trim(),banque:String(r[10]??r[2]??'').trim(),suivi_solde:r[9]===true||String(r[9]).toUpperCase()==='TRUE',ordre:i+1,solde_initial:0})});
     // opérations
     const ops=[];
-    for(const c of comptes){const rows=S(c.id);const f2=rows[1]?.[5];c.solde_initial=typeof f2==='number'?Math.round(f2*100)/100:0;
-      for(let i=2;i<rows.length;i++){const r=rows[i];const date=pDate(r[0]);if(!date)continue;const db=pNum(r[3]),cr=pNum(r[4]);if(db==null&&cr==null)continue;
+    for(const c of comptes){const rows=S(c.id);let h=rows.slice(0,4).findIndex(r=>norm(r?.[0])==='date');if(h<0)h=1;const f2=rows[h]?.[5];c.solde_initial=typeof f2==='number'?Math.round(f2*100)/100:0;
+      for(let i=h+1;i<rows.length;i++){const r=rows[i];const date=pDate(r[0]);if(!date)continue;const db=pNum(r[3]),cr=pNum(r[4]);if(db==null&&cr==null)continue;
         const mt=Math.round(((cr||0)+(db||0))*100)/100;ops.push({compte:c.id,date,date_valeur:pDate(r[1]),libelle:String(r[2]??'').trim(),montant:mt,rubrique:canon(r[6])})}}
     // règles
-    const BD=S('BDD')||[],regles=[];BD.slice(2).forEach((r,i)=>{const m=String(r[0]??'').trim();if(m&&r[1]!=null&&String(r[1]).trim())regles.push({motif:m,rubrique:canon(r[1]),ordre:i})});
+    const BD=S('BDD')||[],regles=[];let hb=BD.slice(0,4).findIndex(r=>norm(r?.[0])==='libelle');if(hb<0)hb=1;BD.slice(hb+1).forEach((r,i)=>{const m=String(r[0]??'').trim();if(m&&r[1]!=null&&String(r[1]).trim())regles.push({motif:m,rubrique:canon(r[1]),ordre:i})});
     // épargne
     const E=S('EPARGNE')||[],ep=[];let an=null,o2=0;
     for(const r of E){if(typeof r[0]==='number'&&r[0]>1990&&r[0]<2100){an=r[0];o2=0;continue}
@@ -1089,11 +1310,11 @@ async function importGGI(file){
     // chèques
     const chq=[];wb.SheetNames.filter(n=>/^CHEQUE\d+$/i.test(n)).forEach(n=>{const cpt='CPT'+n.match(/\d+/)[0];(S(n)||[]).slice(2).forEach(r=>{if(r[1]==null||r[1]==='')return;chq.push({compte:cpt,numero:String(r[1]).trim(),date:pDate(r[0]),beneficiaire:String(r[2]??'').trim(),montant:pNum(r[3]),rubrique:canon(r[4])})})});
     msg(`Trouvé : ${comptes.length} comptes, ${ops.length} opérations, ${rubs.length} rubriques, ${regles.length} règles, ${epU.length} valeurs d'épargne, ${chq.length} chèques. Envoi dans le cloud…`);bar(.05);
-    if($('#xRepl').checked){for(const t of ['cpt_operations','cpt_regles','cpt_epargne','cpt_cheques','cpt_rubriques','cpt_comptes'])chk(await sb.from(t).delete().eq('user_id',sbUser.id),'effacement '+t)}
-    chk(await sb.from('cpt_comptes').upsert(comptes,{onConflict:'user_id,id'}),'comptes');bar(.08);
-    chk(await sb.from('cpt_rubriques').upsert(rubs,{onConflict:'user_id,nom'}),'rubriques');bar(.1);
+    if($('#xRepl').checked){for(const t of ['cpt_operations','cpt_regles','cpt_epargne','cpt_cheques','cpt_rubriques','cpt_comptes'])chk(await T(t).delete().eq('user_id',sbUser.id),'effacement '+t)}
+    chk(await T('cpt_comptes').upsert(comptes,{onConflict:SANS_DOSSIER?'user_id,id':'user_id,dossier,id'}),'comptes');bar(.08);
+    chk(await T('cpt_rubriques').upsert(rubs,{onConflict:SANS_DOSSIER?'user_id,nom':'user_id,dossier,nom'}),'rubriques');bar(.1);
     await insertBatch('cpt_regles',regles,(a,b)=>bar(.1+.1*a/b));
-    for(let i=0;i<epU.length;i+=500)chk(await sb.from('cpt_epargne').upsert(epU.slice(i,i+500),{onConflict:'user_id,annee,support,mois'}),'épargne');bar(.22);
+    for(let i=0;i<epU.length;i+=500)chk(await T('cpt_epargne').upsert(epU.slice(i,i+500),{onConflict:SANS_DOSSIER?'user_id,annee,support,mois':'user_id,dossier,annee,support,mois'}),'épargne');bar(.22);
     if(chq.length)await insertBatch('cpt_cheques',chq);
     await insertBatch('cpt_operations',ops,(a,b)=>{bar(.25+.73*a/b);msg(`Envoi des opérations : ${a} / ${b}…`)});
     msg('Rechargement…');await loadAll();vReglages();
@@ -1122,13 +1343,13 @@ function garderPosition(fn){return function(...a){
   if(meme){const n=v.querySelector('.tw');if(n)n.scrollTop=t;window.scrollTo(0,y)}
 }}
 vRegles=garderPosition(vRegles);vMaj=garderPosition(vMaj);vOps=garderPosition(vOps);vRubriques=garderPosition(vRubriques);
-vCheques=garderPosition(vCheques);vEpargne=garderPosition(vEpargne);vReglages=garderPosition(vReglages);vAnnuel=garderPosition(vAnnuel);
+vCheques=garderPosition(vCheques);vBiens=garderPosition(vBiens);vQuittances=garderPosition(vQuittances);vD2072=garderPosition(vD2072);vEpargne=garderPosition(vEpargne);vReglages=garderPosition(vReglages);vAnnuel=garderPosition(vAnnuel);
 
 /* =================== démarrage =================== */
 async function start(){
   $('#who').textContent=sbUser?.email||'';$('#bLock').style.display=pinSet()?'':'none';
   $('#view').innerHTML='<div class="empty">Chargement de tes comptes…</div>';
-  try{await loadAll()}catch(e){$('#view').innerHTML=`<div class="empty"><b>Impossible de charger tes comptes</b>${esc(e.message)}${/relation|does not exist|schema cache/i.test(e.message)?'<br><br>As-tu bien exécuté le script <b>2-creer-les-comptes.sql</b> dans Supabase ?':''}</div>`;return}
+  try{await loadDossiers();majDossierUI();await loadAll()}catch(e){$('#view').innerHTML=`<div class="empty"><b>Impossible de charger tes comptes</b>${esc(e.message)}${/relation|does not exist|schema cache/i.test(e.message)?'<br><br>As-tu bien exécuté le script <b>2-creer-les-comptes.sql</b> dans Supabase ?':''}</div>`;return}
   render();
 }
 (async()=>{
