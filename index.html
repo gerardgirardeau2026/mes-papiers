@@ -122,6 +122,18 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .auto.on{display:block}
 .auto.err{background:#f3f1ec;color:var(--muted)}
 .form .filled{background:#f0f8f3;border-color:#a9cdb9}
+table.imp{box-shadow:none}
+table.imp tbody tr{cursor:default}
+table.imp td{padding:6px 8px;font-size:13px}
+table.imp th{cursor:default}
+table.imp input:not([type=checkbox]),table.imp select{border:1px solid var(--line);border-radius:6px;padding:4px 6px;width:100%;font-size:13px;background:#fff}
+table.imp input:disabled,table.imp select:disabled{background:#f6f4ef;color:var(--muted)}
+table.imp .fn{max-width:220px;word-break:break-word}
+table.imp .fn div{font-size:11.5px}
+table.imp tr.done-deja td{opacity:.55}
+.impbar{height:6px;background:#eee9df;border-radius:4px;overflow:hidden;margin:4px 0 12px}
+.impbar i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
+@media (max-width:860px){.pc-only{display:none!important}}
 .sync{display:flex;align-items:center;gap:6px;font-size:12.5px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 .sync span{flex:1;line-height:1.3}
 .sync button{padding:3px 8px;font-size:12px}
@@ -146,6 +158,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
     <div class="nav" id="nav"></div>
     <div class="side-foot">
       <div class="sync" id="syncBox"><span id="syncStat">☁️ Cloud non configuré</span><button id="bPc">Régler</button></div>
+      <button id="bImp" class="pc-only">📁 Importer un dossier</button>
       <button id="bExport">💾 Sauvegarder tout (fichier)</button>
       <button id="bImport">📂 Restaurer une sauvegarde</button>
       <button id="bCsv">📊 Exporter la liste (Excel)</button>
@@ -226,6 +239,32 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
         <input type="file" id="scanGalleryInput" accept="image/*" multiple hidden></p>
     </div>
     <div class="mf"><button class="btn" data-close>Annuler</button><button class="btn pri" id="scanDone" disabled>Créer le PDF et classer</button></div>
+  </div>
+</div>
+
+<!-- Import d'un dossier -->
+<div class="ov" id="ovImp">
+  <div class="modal wide">
+    <div class="mh"><h3>Importer un dossier</h3><button class="x" data-close>×</button></div>
+    <div class="mb">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <button class="btn pri" id="impPick">📁 Choisir un dossier</button>
+        <span id="impInfo" class="muted" style="font-size:13.5px;flex:1">Je cherche les PDF et les photos de documents du dossier (et de ses sous-dossiers), je les lis, puis tu coches ceux à enregistrer.</span>
+        <input type="file" id="impInput" webkitdirectory directory multiple hidden>
+      </div>
+      <div class="impbar" id="impBar" style="visibility:hidden"><i></i></div>
+      <div style="overflow:auto;max-height:58vh">
+        <table class="imp" id="impTable" style="display:none">
+          <thead><tr><th style="width:30px"></th><th>Fichier</th><th style="min-width:200px">Intitulé</th><th style="width:150px">Catégorie</th><th style="width:135px">Date</th><th style="width:95px">Montant €</th><th style="width:110px">État</th></tr></thead>
+          <tbody id="impBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mf" style="align-items:center">
+      <label style="margin-right:auto;font-size:14px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="impAll"> Tout cocher</label>
+      <button class="btn" id="impStop" style="display:none">Arrêter la lecture</button>
+      <button class="btn pri" id="impSave" disabled>Enregistrer la sélection</button>
+    </div>
   </div>
 </div>
 
@@ -662,7 +701,7 @@ function analyse(text,docs=DOCS){
   let best=null;for(const [re,nom,cat] of ORGS){const m=n.match(re);if(m&&(!best||m.index<best.i))best={i:m.index,nom,cat}}
   if(best){r.organisme=best.nom}
   else{
-    const g=text.match(/garage\s+[A-Za-zÀ-ÿ'’\-]+(?:\s+[A-Za-zÀ-ÿ'’\-]+)?/i);
+    const g=text.match(/garage[ \t]+[A-Za-zÀ-ÿ'’\-]+(?:[ \t]+[A-Za-zÀ-ÿ'’\-]+)?/i);
     if(g) r.organisme=g[0].trim().replace(/\s+/g,' ').toLowerCase().replace(/(^|\s|-)\S/g,s=>s.toUpperCase());
     else{const l=text.split('\n').map(s=>s.trim()).find(s=>s.length>=3&&s.length<=35&&!/\d/.test(s)&&(s.match(/[A-ZÀ-Ý]/g)||[]).length/s.replace(/[^A-Za-zÀ-ÿ]/g,'').length>.8&&/[A-Z]{3}/.test(s)&&!/FACTURE|DEVIS|AVIS|RELEVE|RELEVÉ|ATTESTATION|CONTRAT|TOTAL|DATE/.test(s));if(l)r.organisme=l.toLowerCase().replace(/(^|\s|-)\S/g,s=>s.toUpperCase())}
   }
@@ -727,6 +766,87 @@ async function autoFill(files,canvas){
   if(done.length){info.className='auto on';info.innerHTML='✨ J\'ai rempli : <b>'+done.join(', ')+'</b>. Vérifie avant d\'enregistrer.'}
   else{info.className='auto on err';info.textContent='Je n\'ai rien reconnu dans ce document. Remplis la fiche à la main.'}
 }
+
+/* ---------- import d'un dossier ---------- */
+const IMP_OK=f=>!/^[.~]/.test(f.name)&&(/\.pdf$/i.test(f.name)?f.size>1000:/\.(jpe?g|png|webp)$/i.test(f.name)&&f.size>40000);
+const fkey=(n,s)=>String(n||'').toLowerCase()+'|'+(s||0);
+let imp={rows:[],stop:false,running:false};
+const catOpts=sel=>CATS.map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${esc(c.nom)}</option>`).join('');
+function impRowHtml(row){
+  const r=row.r,busy=row.etat==='attente'||row.etat==='lecture',dis=busy?'disabled':'';
+  const dir=(row.path.split('/').slice(1,-1).join(' / '))||'';
+  const st={attente:'<span class="muted">en attente</span>',lecture:'🔎 '+(row.prog||'lecture…'),ok:'<span class="badge ok">reconnu</span>',inconnu:'<span class="badge soon">non reconnu</span>',deja:'<span class="badge" style="background:#eee">déjà enregistré</span>',erreur:'<span class="badge late">illisible</span>',fait:'<span class="badge ok">✓ enregistré</span>'}[row.etat];
+  const done=row.etat==='fait';
+  return `<td><input type="checkbox" data-i="${row.i}" data-k="coche" ${row.coche?'checked':''} ${busy||done?'disabled':''}></td>
+  <td class="fn"><a href="#" data-open="${row.i}">${esc(row.f.name)}</a>${dir?`<div class="muted">${esc(dir)}</div>`:''}</td>
+  <td><input data-i="${row.i}" data-k="titre" value="${esc(r.titre||'')}" ${dis}></td>
+  <td><select data-i="${row.i}" data-k="categorie" ${dis}>${catOpts(r.categorie||'divers')}</select></td>
+  <td><input type="date" data-i="${row.i}" data-k="date" value="${esc(r.date||'')}" ${dis}></td>
+  <td><input type="number" step="0.01" data-i="${row.i}" data-k="montant" value="${r.montant!=null&&r.montant!==''?(+r.montant).toFixed(2):''}" ${dis}></td>
+  <td>${st}</td>`;
+}
+function impUpd(row){const tr=document.getElementById('imp-'+row.i);if(tr){tr.innerHTML=impRowHtml(row);tr.className=row.etat==='deja'||row.etat==='fait'?'done-deja':''}impFoot()}
+function impFoot(){
+  const n=imp.rows.filter(r=>r.coche&&r.etat!=='fait').length;
+  $('#impSave').disabled=!n;$('#impSave').textContent=n?`Enregistrer la sélection (${n})`:'Enregistrer la sélection';
+  const lus=imp.rows.filter(r=>!/attente|lecture/.test(r.etat)).length,tot=imp.rows.length;
+  $('#impBar').style.visibility=tot&&imp.running?'visible':'hidden';$('#impBar i').style.width=(tot?lus/tot*100:0)+'%';
+  $('#impStop').style.display=imp.running?'':'none';
+  if(tot){
+    const c=k=>imp.rows.filter(r=>r.etat===k).length;
+    $('#impInfo').textContent=(imp.running?`Lecture ${lus}/${tot}… `:'')+`${c('ok')} reconnu(s), ${c('inconnu')} non reconnu(s), ${c('deja')} déjà enregistré(s)`+(c('erreur')?`, ${c('erreur')} illisible(s)`:'')+(c('fait')?` · ${c('fait')} enregistré(s)`:'')+'.';
+  }
+}
+$('#bImp').onclick=()=>{if(!imp.running&&!imp.rows.some(r=>r.etat!=='fait')){imp.rows=[];$('#impTable').style.display='none';$('#impInfo').textContent='Je cherche les PDF et les photos de documents du dossier (et de ses sous-dossiers), je les lis, puis tu coches ceux à enregistrer.'}impFoot();show('#ovImp')};
+$('#impPick').onclick=()=>{if(imp.running)return toast('Une lecture est déjà en cours');$('#impInput').click()};
+$('#impInput').onchange=e=>{const fl=[...e.target.files];e.target.value='';if(fl.length)startImp(fl)};
+async function startImp(all){
+  const known=new Set();DOCS.forEach(d=>(d.fichiers||[]).forEach(f=>known.add(fkey(f.nom,f.taille))));
+  const files=all.filter(IMP_OK).sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name,'fr')).slice(0,500);
+  if(!files.length){$('#impInfo').textContent=`Aucun PDF ni photo de document trouvé dans ce dossier (${all.length} fichier(s) examiné(s)).`;return}
+  imp.rows=files.map((f,i)=>({i,f,path:f.webkitRelativePath||f.name,etat:known.has(fkey(f.name,f.size))?'deja':'attente',r:{},coche:false}));
+  $('#impBody').innerHTML=imp.rows.map(r=>`<tr id="imp-${r.i}" class="${r.etat==='deja'?'done-deja':''}">${impRowHtml(r)}</tr>`).join('');
+  $('#impTable').style.display='';$('#impAll').checked=false;
+  imp.stop=false;imp.running=true;impFoot();
+  for(const row of imp.rows){
+    if(imp.stop) break;
+    if(row.etat!=='attente') continue;
+    row.etat='lecture';impUpd(row);
+    ocrProgress=p=>{row.prog=p;const td=document.querySelector('#imp-'+row.i+' td:last-child');if(td)td.textContent='🔎 '+p};
+    try{row.r=analyse(await extractText([row.f]));row.etat=row.r.titre?'ok':'inconnu'}
+    catch(e){row.etat='erreur';row.r={}}
+    if(!row.r.titre) row.r.titre=row.f.name.replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ').trim();
+    if(!row.r.date&&row.f.lastModified) row.r.date=new Date(row.f.lastModified).toISOString().slice(0,10);
+    row.coche=row.etat==='ok';
+    impUpd(row);
+  }
+  for(const row of imp.rows) if(row.etat==='attente'||row.etat==='lecture'){row.etat='inconnu';row.r.titre=row.r.titre||row.f.name.replace(/\.[^.]+$/,'');impUpd(row)}
+  imp.running=false;impFoot();
+}
+$('#impStop').onclick=()=>{imp.stop=true;$('#impStop').textContent='Arrêt…'};
+$('#impTable').addEventListener('input',e=>{
+  const el=e.target,row=imp.rows[+el.dataset.i];if(!row)return;
+  const k=el.dataset.k;
+  if(k==='coche') row.coche=el.checked;
+  else{row.r[k]=k==='montant'?(el.value===''?'':+el.value):el.value;if(!row.coche&&row.etat!=='fait'){row.coche=true;const cb=document.querySelector(`#imp-${row.i} input[data-k=coche]`);if(cb)cb.checked=true}}
+  impFoot();
+});
+$('#impTable').addEventListener('change',e=>{const el=e.target;if(el.tagName==='SELECT'){const row=imp.rows[+el.dataset.i];row.r.categorie=el.value;if(row.etat!=='fait'){row.coche=true;const cb=document.querySelector(`#imp-${row.i} input[data-k=coche]`);if(cb)cb.checked=true}impFoot()}});
+$('#impTable').addEventListener('click',e=>{const a=e.target.closest('[data-open]');if(!a)return;e.preventDefault();const f=imp.rows[+a.dataset.open].f;const u=URL.createObjectURL(f);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000)});
+$('#impAll').onchange=e=>{imp.rows.forEach(r=>{if(!/attente|lecture|fait/.test(r.etat)){r.coche=e.target.checked;const cb=document.querySelector(`#imp-${r.i} input[data-k=coche]`);if(cb)cb.checked=r.coche}});impFoot()};
+$('#impSave').onclick=async()=>{
+  const sel=imp.rows.filter(r=>r.coche&&!/attente|lecture|fait/.test(r.etat));if(!sel.length)return;
+  $('#impSave').disabled=true;
+  let n=0;
+  for(const row of sel){
+    const r=row.r,f=row.f,now=new Date().toISOString();
+    const d={id:uid(),cree:now,modifie:now,titre:(r.titre||f.name).trim(),categorie:r.categorie||'divers',organisme:r.organisme||'',date:r.date||'',
+      montant:r.montant===''||r.montant==null?'':+r.montant,echeance:r.echeance||'',reference:r.reference||'',tags:[],notes:'Importé de : '+row.path,
+      fichiers:[{id:uid(),nom:f.name,type:f.type||(/\.pdf$/i.test(f.name)?'application/pdf':'image/jpeg'),taille:f.size,blob:f}],_sync:''};
+    try{await dbPut(d);DOCS.push(d);row.etat='fait';row.coche=false;n++;impUpd(row)}catch(e){toast('Erreur : '+e.message);break}
+  }
+  render();toast(`${n} document(s) enregistré(s)`+(server()?', envoi dans le cloud en cours':''));syncSoon();impFoot();
+};
 
 /* ---------- scanner ---------- */
 let scan={pages:[],mode:'doc'};
