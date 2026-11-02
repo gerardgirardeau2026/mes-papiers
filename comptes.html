@@ -56,7 +56,8 @@ table.recap td:first-child,table.recap th:first-child{border-right:2px solid var
 table.recap td:first-child,table.recap th:first-child{position:sticky;left:0;background:var(--panel);z-index:2;white-space:nowrap}
 table.recap th:first-child{background:var(--th-bg);z-index:3}
 table.recap tr.tot td{font-weight:700;background:var(--tot)}
-table.recap tr.sec td{border-right:0!important;background:var(--th-bg);color:var(--th-fg);letter-spacing:.04em;font-weight:700;font-size:12px;text-transform:uppercase}
+table.recap tr.sec td{background:var(--th-bg);color:var(--th-fg);letter-spacing:.04em;font-weight:700;font-size:12px;text-transform:uppercase}
+table.recap tr.sec td:last-child{border-right:0}
 table.recap tr.sol td{background:var(--sol);color:var(--muted)}
 td input.in,td select.in{border:1px solid transparent;background:transparent;border-radius:6px;padding:3px 5px;width:100%;font-size:13px}
 td input.in:hover,td select.in:hover{border-color:var(--line)}
@@ -875,9 +876,9 @@ function vRecap(){
   $('#view').innerHTML=`${nC?`<p><span class="badge b-warn clic" ${goA({annee:String(y),rub:'__classer'})}>⚠ ${nC} opération(s) ${y} à classer, non comptées ici</span></p>`:''}
   <div class="tw"><table class="recap"><thead><tr><th>${y}</th>${MOISC.map(x=>`<th class="num">${x}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>
   ${sold}
-  <tr class="sec"><td colspan="14">Recettes</td></tr>${rec.map(line).join('')}
+  <tr class="sec"><td>Recettes</td>${MOISC.map(x=>`<td class="num">${x}</td>`).join('')}<td class="num">Total</td></tr>${rec.map(line).join('')}
   <tr class="tot"><td>Total recettes</td>${totR.map(v=>`<td class="num">${eur0(v)}</td>`).join('')}<td class="num">${eur0(sum(totR))}</td></tr>
-  <tr class="sec"><td colspan="14">Dépenses</td></tr>${dep.map(line).join('')}
+  <tr class="sec"><td>Dépenses</td>${MOISC.map(x=>`<td class="num">${x}</td>`).join('')}<td class="num">Total</td></tr>${dep.map(line).join('')}
   <tr class="tot"><td>Total dépenses</td>${totD.map(v=>`<td class="num">${eur0(v)}</td>`).join('')}<td class="num">${eur0(sum(totD))}</td></tr>
   <tr class="tot"><td>Recettes − dépenses</td>${totR.map((v,i)=>`<td class="num ${v-totD[i]<0?'neg':'pos'}">${eur0(v-totD[i])}</td>`).join('')}<td class="num ${sum(totR)-sum(totD)<0?'neg':'pos'}">${eur0(sum(totR)-sum(totD))}</td></tr>
   </tbody></table></div>`;
@@ -906,9 +907,9 @@ function vAnnuel(){
   $('#view').innerHTML=`<p class="muted" style="margin-top:0;font-size:13.5px">Budget : montant annuel prévu par rubrique (modifiable). « Projection » = dépenses ${cur} ramenées à 12 mois (${nbM} mois écoulés). Écart en rouge = au-delà du budget.</p>
   <div class="tw"><table class="recap"><thead><tr><th>Rubrique</th>${ys.map(y=>`<th class="num">${y}</th>`).join('')}<th class="num">Budget ${cur}</th><th class="num">Projection ${cur}</th><th class="num">Écart</th></tr></thead><tbody>
   <tr class="sol"><td>Solde début d'année</td>${ys.map(y=>`<td class="num">${eur0(sd(y))}</td>`).join('')}<td colspan="3"></td></tr>
-  <tr class="sec"><td colspan="${ys.length+4}">Recettes</td></tr>${rec.map(line).join('')}
+  <tr class="sec"><td>Recettes</td>${ys.map(y=>`<td class="num">${y}</td>`).join('')}<td class="num">Budget ${cur}</td><td class="num">Projection ${cur}</td><td class="num">Écart</td></tr>${rec.map(line).join('')}
   <tr class="tot"><td>Total recettes</td>${ys.map(y=>`<td class="num">${eur0(sumT(y,rec))}</td>`).join('')}<td class="num">${eur0(sumB(rec))}</td><td class="num">${eur0(sumT(cur,rec)/nbM*12)}</td><td></td></tr>
-  <tr class="sec"><td colspan="${ys.length+4}">Dépenses</td></tr>${dep.map(line).join('')}
+  <tr class="sec"><td>Dépenses</td>${ys.map(y=>`<td class="num">${y}</td>`).join('')}<td class="num">Budget ${cur}</td><td class="num">Projection ${cur}</td><td class="num">Écart</td></tr>${dep.map(line).join('')}
   <tr class="tot"><td>Total dépenses</td>${ys.map(y=>`<td class="num">${eur0(sumT(y,dep))}</td>`).join('')}<td class="num">${eur0(sumB(dep))}</td><td class="num">${eur0(sumT(cur,dep)/nbM*12)}</td><td></td></tr>
   <tr class="sol"><td>Solde fin d'année</td>${ys.map(y=>`<td class="num">${eur0(sf(y))}</td>`).join('')}<td colspan="3"></td></tr>
   </tbody></table></div>`;
