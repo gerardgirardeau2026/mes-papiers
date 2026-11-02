@@ -115,6 +115,18 @@ select.rub.vide{background:var(--warn-soft);border-color:#efc9b3}
   table.opst td.lib,table.opst td.rb{grid-column:1/-1}
   table.opst td.rb select{border:1px solid var(--line);padding:5px}
 }
+#printZone{display:none}
+.rel{font:11px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#000}
+.rel h1{font-size:17px;margin:0}.rel .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}
+.rel .meta{text-align:right;font-size:11px}
+.rel table{width:100%;border-collapse:collapse;margin-bottom:6px}
+.rel th,.rel td{border:1px solid #999;padding:3px 5px;font-size:10.5px;position:static;background:none;color:#000}
+.rel th{background:#eee!important;text-transform:none;letter-spacing:0;font-size:10.5px}
+.rel td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.rel tr.s td{background:#f4f4f4;font-weight:600}
+.rel .sec{page-break-after:always}.rel .sec:last-child{page-break-after:auto}
+.rel .pied{font-size:9.5px;color:#555;margin-top:4px}
+@media print{body.printing .app,body.printing .ov,body.printing .toast,body.printing .lock{display:none!important}body.printing #printZone{display:block}@page{margin:12mm}}
 @media print{aside,.top .btn,.top select,.filters,.noprint{display:none!important}.app{display:block}main{padding:0}.tw,.box{box-shadow:none;border:0}th{position:static}}
 </style>
 </head>
@@ -177,6 +189,20 @@ select.rub.vide{background:var(--warn-soft);border-color:#efc9b3}
   <div class="pad" id="lockPad"><button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button><button>7</button><button>8</button><button>9</button><button class="ghost" data-k="back">⌫</button><button>0</button><button class="ghost" disabled></button></div>
   <a href="#" id="lockForgot">Code oublié ?</a>
 </div></div>
+<!-- Relevé -->
+<div class="ov" id="ovRel">
+  <div class="modal" style="width:min(460px,100%)">
+    <div class="mh"><h3>Imprimer un relevé</h3><button class="x" data-close>×</button></div>
+    <div class="mb"><form class="form" id="relForm" style="grid-template-columns:1fr 1fr">
+      <label class="full">Compte<select name="compte" id="relC"></select></label>
+      <label>Du<input type="date" name="du" required></label><label>Au<input type="date" name="au" required></label>
+      <div class="full filters" style="margin:0"><button type="button" class="btn sm" data-p="mois">Ce mois</button><button type="button" class="btn sm" data-p="moisp">Mois dernier</button><button type="button" class="btn sm" data-p="an">Cette année</button><button type="button" class="btn sm" data-p="anp">Année dernière</button></div>
+      <label class="full" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="rub" checked style="width:auto"> Afficher les rubriques</label>
+    </form><p class="muted" style="font-size:12.5px;margin:10px 0 0">Astuce : dans la fenêtre d'impression, choisis « Enregistrer au format PDF » pour en faire un fichier.</p></div>
+    <div class="mf"><button class="btn" data-close>Annuler</button><button class="btn pri" id="relGo">🖨 Imprimer</button></div>
+  </div>
+</div>
+<div id="printZone"></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -419,7 +445,7 @@ function filtreOps(){
 }
 function vOps(){
   const f=st.f;
-  $('#tools').innerHTML=`<button class="btn" id="bExpOps">⬇ Excel</button><button class="btn pri" id="bAddOp">+ Opération</button>`;
+  $('#tools').innerHTML=`<button class="btn" id="bRel">🖨 Relevé</button><button class="btn" id="bExpOps">⬇ Excel</button><button class="btn pri" id="bAddOp">+ Opération</button>`;
   const ys=annees();
   const list=filtreOps(),single=f.compte&&compte(f.compte)?.suivi_solde;
   let solde=null;if(single&&list.length)solde=soldeAvant(f.compte,list[0].date);
@@ -446,6 +472,7 @@ function vOps(){
   let qt;$('#fQ').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{st.f.q=e.target.value;st.lim=300;vOps();const i=$('#fQ');i.focus();i.setSelectionRange(i.value.length,i.value.length)},300)};
   if($('#bMore'))$('#bMore').onclick=()=>{st.lim+=500;vOps()};
   $('#bAddOp').onclick=()=>openOp(null);
+  $('#bRel').onclick=openReleve;
   $('#bExpOps').onclick=()=>exportXlsx([['Date','Compte','Libellé','Montant','Rubrique','Note'],...list.map(o=>[o.date,cNom(o.compte),o.libelle,o.montant,o.rubrique,o.note||''])],'Operations','operations');
   $('#view').querySelectorAll('[data-edit]').forEach(td=>td.onclick=()=>openOp(D.ops.find(o=>o.id===td.dataset.edit)));
   $('#view').querySelectorAll('select[data-rub]').forEach(s=>s.onchange=()=>changeRub(D.ops.find(o=>o.id===s.dataset.rub),s.value,s));
@@ -506,6 +533,46 @@ $('#opDel').onclick=async()=>{
   try{chk(await sb.from('cpt_operations').delete().eq('id',id),'suppression')}catch(e){toast('Erreur : '+e.message);return}
   D.ops=D.ops.filter(o=>o.id!==id);index();hide('#ovOp');render();toast('Opération supprimée');
 };
+
+/* =================== relevé imprimable =================== */
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function periode(k){const n=new Date(),y=n.getFullYear(),m=n.getMonth();
+  if(k==='mois')return [iso(new Date(y,m,1)),iso(new Date(y,m+1,0))];
+  if(k==='moisp')return [iso(new Date(y,m-1,1)),iso(new Date(y,m,0))];
+  if(k==='an')return [`${y}-01-01`,`${y}-12-31`];return [`${y-1}-01-01`,`${y-1}-12-31`]}
+function openReleve(){
+  const f=$('#relForm');$('#relC').innerHTML=`<option value="">Tous les comptes (un relevé par compte)</option>`+D.comptes.map(c=>`<option value="${c.id}">${esc(c.nom)}</option>`).join('');
+  f.compte.value=st.f.compte||'';
+  let [du,au]=periode('mois');
+  if(st.f.annee&&st.f.mois){const y=+st.f.annee,m=+st.f.mois-1;du=iso(new Date(y,m,1));au=iso(new Date(y,m+1,0))}
+  else if(st.f.annee){du=st.f.annee+'-01-01';au=st.f.annee+'-12-31'}
+  f.du.value=du;f.au.value=au;show('#ovRel');
+}
+$('#relForm').addEventListener('click',e=>{const b=e.target.closest('[data-p]');if(!b)return;const [d,a]=periode(b.dataset.p);$('#relForm').du.value=d;$('#relForm').au.value=a});
+$('#relGo').onclick=()=>{
+  const f=$('#relForm');if(!f.reportValidity())return;const du=f.du.value,au=f.au.value;if(du>au)return toast('La date de début est après la date de fin');
+  const ids=f.compte.value?[f.compte.value]:D.comptes.map(c=>c.id);
+  $('#printZone').innerHTML=`<div class="rel">${ids.map(id=>releveHTML(id,du,au,f.rub.checked)).join('')}</div>`;
+  hide('#ovRel');document.body.classList.add('printing');
+  setTimeout(()=>{window.print();setTimeout(()=>document.body.classList.remove('printing'),500)},100);
+};
+window.addEventListener('afterprint',()=>document.body.classList.remove('printing'));
+function releveHTML(cid,du,au,avecRub){
+  const c=compte(cid),suivi=c.suivi_solde,ops=D.ops.filter(o=>o.compte===cid&&o.date>=du&&o.date<=au);
+  const e2=v=>v?eur(v).replace(/\u202f|\u00a0/g,' '):'';
+  let solde=suivi?soldeAvant(cid,du):0,deb=0,cre=0;
+  const lignes=ops.map(o=>{if(o.montant<0)deb-=o.montant;else cre+=o.montant;solde=Math.round((solde+o.montant)*100)/100;
+    return `<tr><td>${fdate(o.date)}</td><td>${esc(o.libelle)}${o.note?` <i>(${esc(o.note)})</i>`:''}</td>${avecRub?`<td>${esc(o.rubrique)}</td>`:''}<td class="n">${o.montant<0?e2(-o.montant):''}</td><td class="n">${o.montant>0?e2(o.montant):''}</td>${suivi?`<td class="n">${e2(solde)||'0,00 €'}</td>`:''}</tr>`}).join('');
+  const nc=4+(avecRub?1:0)+(suivi?1:0),col=avecRub?3:2;
+  return `<div class="sec"><div class="hd"><div><h1>Relevé de compte · ${esc(c.nom)}</h1><div>${esc(c.banque||'')} · ${esc(c.id)}</div></div>
+    <div class="meta">Du <b>${fdate(du)}</b> au <b>${fdate(au)}</b><br>Édité le ${fdate(today())} · ${ops.length} opération${ops.length>1?'s':''}</div></div>
+    <table><thead><tr><th style="width:68px">Date</th><th>Libellé</th>${avecRub?'<th style="width:130px">Rubrique</th>':''}<th style="width:80px">Débit</th><th style="width:80px">Crédit</th>${suivi?'<th style="width:85px">Solde</th>':''}</tr></thead><tbody>
+    ${suivi?`<tr class="s"><td colspan="${nc-1}">Solde au ${fdate(du)}</td><td class="n">${e2(soldeAvant(cid,du))||'0,00 €'}</td></tr>`:''}
+    ${lignes||`<tr><td colspan="${nc}" style="text-align:center;color:#666">Aucune opération sur la période</td></tr>`}
+    <tr class="s"><td colspan="${col}">Total des opérations</td><td class="n">${e2(deb)}</td><td class="n">${e2(cre)}</td>${suivi?'<td></td>':''}</tr>
+    ${suivi?`<tr class="s"><td colspan="${nc-1}">Solde au ${fdate(au)}</td><td class="n">${e2(solde)||'0,00 €'}</td></tr>`:`<tr class="s"><td colspan="${col}">Total ${cre-deb<0?'débiteur':'créditeur'} de la période</td><td class="n" colspan="2">${e2(Math.abs(cre-deb))}</td></tr>`}
+    </tbody></table><div class="pied">Mes Comptes · document établi à partir des relevés importés, sans valeur officielle.</div></div>`;
+}
 
 /* =================== import d'un relevé =================== */
 let IMP=null;
