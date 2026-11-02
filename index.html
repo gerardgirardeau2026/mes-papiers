@@ -432,36 +432,30 @@ function render(){
   renderList();
 }
 function renderDash(){
-  const y=st.annee||String(new Date().getFullYear());
-  const NODEP=['banque','travail','identite'],dep=d=>!NODEP.includes(d.categorie);
-  const ofY=DOCS.filter(d=>(d.date||'').slice(0,4)===y&&dep(d));
-  const tot=ofY.reduce((s,d)=>s+(+d.montant||0),0);
-  const prev=DOCS.filter(d=>(d.date||'').slice(0,4)===String(+y-1)&&dep(d)).reduce((s,d)=>s+(+d.montant||0),0);
   const ech=DOCS.filter(d=>d.echeance&&daysTo(d.echeance)<=60).sort((a,b)=>a.echeance<b.echeance?-1:1);
-  const byCat=CATS.map(c=>({c,t:ofY.filter(d=>d.categorie===c.id).reduce((s,d)=>s+(+d.montant||0),0)})).filter(x=>x.t>0).sort((a,b)=>b.t-a.t);
-  const max=Math.max(1,...byCat.map(x=>x.t));
+  const byCat=CATS.map(c=>({c,n:DOCS.filter(d=>d.categorie===c.id).length})).filter(x=>x.n);
+  const mois=new Date().toISOString().slice(0,7),nMois=DOCS.filter(d=>(d.cree||'').slice(0,7)===mois).length;
   const recent=DOCS.slice().sort((a,b)=>(b.cree||'')>(a.cree||'')?1:-1).slice(0,8);
   if(!DOCS.length){
-    $('#view').innerHTML=`<div class="empty"><b>Aucun document pour l'instant</b>Clique sur « + Ajouter » ou glisse directement un PDF / une photo dans cette fenêtre.<br><br><button class="btn pri" onclick="openForm()">+ Ajouter mon premier document</button></div>`;
+    $('#view').innerHTML=`<div class="empty"><b>Aucun document pour l'instant</b>Clique sur « + Ajouter » ou « 📷 Scanner », ou glisse directement un PDF / une photo dans cette fenêtre.<br><br><button class="btn pri" onclick="openForm()">+ Ajouter mon premier document</button></div>`;
     return;
   }
   $('#view').innerHTML=`
   <div class="cards">
     <div class="card"><div class="k">Documents classés</div><div class="v">${DOCS.length}</div></div>
-    <div class="card" title="Hors banque, salaires et papiers d'identité"><div class="k">Dépenses ${y}</div><div class="v">${eur(tot)}</div></div>
-    <div class="card" title="Hors banque, salaires et papiers d'identité"><div class="k">Dépenses ${+y-1}</div><div class="v">${eur(prev)}</div></div>
+    <div class="card"><div class="k">Ajoutés ce mois-ci</div><div class="v">${nMois}</div></div>
     <div class="card"><div class="k">Échéances sous 60 jours</div><div class="v" style="color:${ech.length?'var(--warn)':'inherit'}">${ech.length}</div></div>
   </div>
   <div class="grid2">
-    <div class="box"><h2>Dépenses ${y} par catégorie <span class="muted" style="font-weight:400;font-size:12.5px">(hors banque et salaires)</span></h2>
-      ${byCat.length?byCat.map(x=>`<div class="bar"><span>${esc(x.c.nom)}</span><span class="t"><i style="width:${x.t/max*100}%;background:${x.c.c}"></i></span><span class="a">${eur(x.t)}</span></div>`).join(''):'<p class="muted">Aucun montant saisi pour cette année.</p>'}
+    <div class="box"><h2>Par catégorie</h2>
+      <ul class="mini">${byCat.map(x=>`<li data-cat="${x.c.id}">${catChip(x.c.id)}<span class="r">${x.n} document${x.n>1?'s':''}</span></li>`).join('')}</ul>
     </div>
     <div class="box"><h2>À surveiller</h2>
-      ${ech.length?`<ul class="mini">${ech.map(d=>`<li data-id="${d.id}">${catChip(d.categorie)} ${esc(d.titre)}<span class="r">${echBadge(d.echeance)}</span></li>`).join('')}</ul>`:'<p class="muted">Rien d\'urgent. Pense à saisir les dates de renouvellement de tes contrats et de fin de garantie.</p>'}
+      ${ech.length?`<ul class="mini">${ech.map(d=>`<li data-id="${d.id}">${catChip(d.categorie)} ${esc(d.titre)}<span class="r">${echBadge(d.echeance)}</span></li>`).join('')}</ul>`:'<p class="muted">Rien d\'urgent. Pense à saisir les dates de renouvellement de tes contrats, de fin de garantie ou d\'expiration de tes papiers.</p>'}
     </div>
   </div>
   <div class="box" style="margin-top:16px"><h2>Derniers ajouts</h2>
-    <ul class="mini">${recent.map(d=>`<li data-id="${d.id}">${catChip(d.categorie)} <span>${esc(d.titre)} <span class="muted">${esc(d.organisme||'')}</span></span><span class="r">${d.montant?eur(+d.montant):''} <span class="muted">${fdate(d.date)}</span></span></li>`).join('')}</ul>
+    <ul class="mini">${recent.map(d=>`<li data-id="${d.id}">${catChip(d.categorie)} <span>${esc(d.titre)} <span class="muted">${esc(d.organisme||'')}</span></span><span class="r muted">${fdate(d.date)}</span></li>`).join('')}</ul>
   </div>`;
 }
 function renderList(){
@@ -471,7 +465,7 @@ function renderList(){
   if(!list.length){$('#view').innerHTML=`<div class="empty"><b>Aucun document trouvé</b>${DOCS.length?'Essaie une autre recherche ou une autre année.':'Ajoute ton premier document.'}</div>`;return}
   const th=(k,l,c='')=>`<th data-sort="${k}" class="${c}">${l}${st.sort===k?(st.dir>0?' ▲':' ▼'):''}</th>`;
   $('#view').innerHTML=`
-  <p class="muted" style="margin:-8px 0 10px">${list.length} document${list.length>1?'s':''} · total ${eur(tot)}</p>
+  <p class="muted" style="margin:-8px 0 10px">${list.length} document${list.length>1?'s':''}</p>
   <table><thead><tr>${th('date','Date')}${th('titre','Intitulé')}${th('organisme','Organisme','hide-m')}${th('categorie','Catégorie','hide-m')}${th('montant','Montant','num')}${th('echeance','Échéance','hide-m')}<th class="hide-m">📎</th></tr></thead>
   <tbody>${list.map(d=>`<tr data-id="${d.id}">
     <td style="white-space:nowrap">${fdate(d.date)}</td>
@@ -597,6 +591,7 @@ $('#nav').onclick=e=>{const b=e.target.closest('button');if(!b)return;st.view=b.
 $('#view').onclick=e=>{
   const s=e.target.closest('[data-sort]');
   if(s){const k=s.dataset.sort;st.dir=st.sort===k?-st.dir:(k==='date'||k==='montant'?-1:1);st.sort=k;render();return}
+  const c=e.target.closest('[data-cat]');if(c){st.view='cat:'+c.dataset.cat;render();return}
   const r=e.target.closest('[data-id]');if(r)openDet(r.dataset.id);
 };
 $('#q').oninput=e=>{st.q=e.target.value;if(st.q&&st.view==='dash')st.view='all';render()};
