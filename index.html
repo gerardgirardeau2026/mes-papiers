@@ -118,6 +118,24 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .scan-big{display:flex;flex-direction:column;align-items:center;gap:8px;padding:26px;border:2px dashed var(--line);border-radius:12px;cursor:pointer;color:var(--muted);text-align:center}
 .scan-big b{font-size:17px;color:var(--accent)}
 .busy{opacity:.5;pointer-events:none}
+.lock{position:fixed;inset:0;background:var(--bg);z-index:60;display:none;align-items:center;justify-content:center;padding:20px}
+.lock.on{display:flex}
+.lockbox{text-align:center;width:min(320px,100%)}
+.lockbox .logo{font-size:24px;padding:0 0 6px}
+.lockbox p{margin:6px 0 18px;color:var(--muted);min-height:2.6em}
+.lockbox p.err{color:var(--danger)}
+.dots{display:flex;gap:12px;justify-content:center;margin-bottom:26px}
+.dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--accent);display:block}
+.dots i.f{background:var(--accent)}
+.dots.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.pad{display:grid;grid-template-columns:repeat(3,72px);gap:14px;justify-content:center}
+.pad button{width:72px;height:72px;border-radius:50%;border:1px solid var(--line);background:#fff;font-size:24px;cursor:pointer;color:var(--ink)}
+.pad button:active{background:var(--accent-soft)}
+.pad button.ghost{border:0;background:none;font-size:20px}
+.pad button:disabled{opacity:.4}
+.lockbox a{display:inline-block;margin-top:22px;font-size:13.5px;color:var(--muted)}
+
 .auto{grid-column:1/-1;font-size:13.5px;padding:9px 12px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:none}
 .auto.on{display:block}
 .auto.err{background:#f3f1ec;color:var(--muted)}
@@ -158,6 +176,7 @@ table.imp tr.done-deja td{opacity:.55}
     <div class="nav" id="nav"></div>
     <div class="side-foot">
       <div class="sync" id="syncBox"><span id="syncStat">☁️ Cloud non configuré</span><button id="bPc">Régler</button></div>
+      <button id="bLock" style="display:none">🔒 Verrouiller</button>
       <button id="bImp" class="pc-only">📁 Importer un dossier</button>
       <button id="bExport">💾 Sauvegarder tout (fichier)</button>
       <button id="bImport">📂 Restaurer une sauvegarde</button>
@@ -292,6 +311,22 @@ table.imp tr.done-deja td{opacity:.55}
   </div>
 </div>
 
+<!-- Verrouillage par code -->
+<div class="lock" id="lock">
+  <div class="lockbox">
+    <div class="logo">Mes <span>Papiers</span></div>
+    <p id="lockMsg">Entre ton code</p>
+    <div class="dots" id="lockDots"></div>
+    <div class="pad" id="lockPad">
+      <button>1</button><button>2</button><button>3</button>
+      <button>4</button><button>5</button><button>6</button>
+      <button>7</button><button>8</button><button>9</button>
+      <button class="ghost" data-k="back" aria-label="Effacer">⌫</button><button>0</button><button class="ghost" data-k="none" disabled></button>
+    </div>
+    <a href="#" id="lockForgot">Code oublié ?</a>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div class="dragall" id="dragall">Lâche les fichiers pour créer un document</div>
 
@@ -398,9 +433,10 @@ function render(){
 }
 function renderDash(){
   const y=st.annee||String(new Date().getFullYear());
-  const ofY=DOCS.filter(d=>(d.date||'').slice(0,4)===y);
+  const NODEP=['banque','travail','identite'],dep=d=>!NODEP.includes(d.categorie);
+  const ofY=DOCS.filter(d=>(d.date||'').slice(0,4)===y&&dep(d));
   const tot=ofY.reduce((s,d)=>s+(+d.montant||0),0);
-  const prev=DOCS.filter(d=>(d.date||'').slice(0,4)===String(+y-1)).reduce((s,d)=>s+(+d.montant||0),0);
+  const prev=DOCS.filter(d=>(d.date||'').slice(0,4)===String(+y-1)&&dep(d)).reduce((s,d)=>s+(+d.montant||0),0);
   const ech=DOCS.filter(d=>d.echeance&&daysTo(d.echeance)<=60).sort((a,b)=>a.echeance<b.echeance?-1:1);
   const byCat=CATS.map(c=>({c,t:ofY.filter(d=>d.categorie===c.id).reduce((s,d)=>s+(+d.montant||0),0)})).filter(x=>x.t>0).sort((a,b)=>b.t-a.t);
   const max=Math.max(1,...byCat.map(x=>x.t));
@@ -412,12 +448,12 @@ function renderDash(){
   $('#view').innerHTML=`
   <div class="cards">
     <div class="card"><div class="k">Documents classés</div><div class="v">${DOCS.length}</div></div>
-    <div class="card"><div class="k">Total payé en ${y}</div><div class="v">${eur(tot)}</div></div>
-    <div class="card"><div class="k">Total payé en ${+y-1}</div><div class="v">${eur(prev)}</div></div>
+    <div class="card" title="Hors banque, salaires et papiers d'identité"><div class="k">Dépenses ${y}</div><div class="v">${eur(tot)}</div></div>
+    <div class="card" title="Hors banque, salaires et papiers d'identité"><div class="k">Dépenses ${+y-1}</div><div class="v">${eur(prev)}</div></div>
     <div class="card"><div class="k">Échéances sous 60 jours</div><div class="v" style="color:${ech.length?'var(--warn)':'inherit'}">${ech.length}</div></div>
   </div>
   <div class="grid2">
-    <div class="box"><h2>Dépenses ${y} par catégorie</h2>
+    <div class="box"><h2>Dépenses ${y} par catégorie <span class="muted" style="font-weight:400;font-size:12.5px">(hors banque et salaires)</span></h2>
       ${byCat.length?byCat.map(x=>`<div class="bar"><span>${esc(x.c.nom)}</span><span class="t"><i style="width:${x.t/max*100}%;background:${x.c.c}"></i></span><span class="a">${eur(x.t)}</span></div>`).join(''):'<p class="muted">Aucun montant saisi pour cette année.</p>'}
     </div>
     <div class="box"><h2>À surveiller</h2>
@@ -676,6 +712,7 @@ const ORGS=[
  ['\\bcarsat\\b','Carsat','travail'],['agirc|arrco','Agirc-Arrco','travail'],['france travail|pole emploi','France Travail','travail'],['urssaf','Urssaf','travail'],
 ].map(([r,n,c])=>[new RegExp(r),n,c]);
 const STRONG=[
+ ['passeport','Passeport','identite',''],["carte nationale d.identite|carte d.identite","Carte d'identité",'identite',''],['permis de conduire','Permis de conduire','identite',''],['livret de famille','Livret de famille','identite',''],['acte de (naissance|mariage)','Acte d\'état civil','identite',''],["releve d.identite bancaire|\\brib\\b|\\biban\\b.*\\bbic\\b",'RIB','banque',''],
  ["avis d.imposition|impot sur le revenu","Avis d'imposition",'impots','an'],['taxe fonciere','Taxe foncière','impots','an'],["taxe d.habitation","Taxe d'habitation",'impots','an'],
  ['releve de compte|releve de vos comptes|extrait de compte','Relevé de compte','banque','mois'],
  ['bulletin de (paie|salaire)','Bulletin de paie','travail','mois'],
@@ -684,7 +721,7 @@ const STRONG=[
  ['ordonnance','Ordonnance','sante',''],['decompte|releve de (vos )?remboursements?','Décompte de remboursement','sante','mois'],
  ['controle technique','Contrôle technique','vehicule',''],["certificat d.immatriculation|carte grise",'Carte grise','vehicule',''],
 ].map(([r,n,c,p])=>[new RegExp(r),n,c,p]);
-const WEAK=[['facture','Facture','mois'],['devis','Devis',''],['bon de commande','Bon de commande',''],['echeancier','Échéancier','an'],['contrat','Contrat',''],['attestation','Attestation',''],['ticket|\\brecu\\b','Ticket','']].map(([r,n,p])=>[new RegExp(r),n,p]);
+const WEAK=[['offre de pret|contrat de pret|tableau d.amortissement','Prêt',''],['facture','Facture','mois'],['devis','Devis',''],['bon de commande','Bon de commande',''],['echeancier','Échéancier','an'],['contrat','Contrat',''],['attestation','Attestation',''],['ticket|\\brecu\\b','Ticket','']].map(([r,n,p])=>[new RegExp(r),n,p]);
 const KEYCAT=[[/\bgarage\b|vidange|pneus?\b|carrosserie|immatriculation/,'vehicule'],[/\bloyer\b|\bsyndic\b|copropriete|bail\b/,'logement'],[/mutuelle|\bmedecin|\bdocteur\b|\bdr\b|kine|dentiste|optique|opticien/,'sante'],[/assurance|\bsinistre\b|cotisation/,'assurances'],[/garantie|\bsav\b/,'garanties'],[/electricite|\bgaz\b|consommation|\bkwh\b|\beau\b/,'factures'],[/abonnement|forfait/,'abonnements'],[/\bimpot|\bfiscal/,'impots'],[/banque|\biban\b|\bsolde\b/,'banque']];
 const MOIS=['janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];
 const MOISFR=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -703,7 +740,7 @@ function analyse(text,docs=DOCS){
   else{
     const g=text.match(/garage[ \t]+[A-Za-zÀ-ÿ'’\-]+(?:[ \t]+[A-Za-zÀ-ÿ'’\-]+)?/i);
     if(g) r.organisme=g[0].trim().replace(/\s+/g,' ').toLowerCase().replace(/(^|\s|-)\S/g,s=>s.toUpperCase());
-    else{const l=text.split('\n').map(s=>s.trim()).find(s=>s.length>=3&&s.length<=35&&!/\d/.test(s)&&(s.match(/[A-ZÀ-Ý]/g)||[]).length/s.replace(/[^A-Za-zÀ-ÿ]/g,'').length>.8&&/[A-Z]{3}/.test(s)&&!/FACTURE|DEVIS|AVIS|RELEVE|RELEVÉ|ATTESTATION|CONTRAT|TOTAL|DATE/.test(s));if(l)r.organisme=l.toLowerCase().replace(/(^|\s|-)\S/g,s=>s.toUpperCase())}
+    else if(false){const l=text.split('\n').map(s=>s.trim()).find(s=>s.length>=3&&s.length<=35&&!/\d/.test(s)&&(s.match(/[A-ZÀ-Ý]/g)||[]).length/s.replace(/[^A-Za-zÀ-ÿ]/g,'').length>.8&&/[A-Z]{3}/.test(s)&&!/FACTURE|DEVIS|AVIS|RELEVE|RELEVÉ|ATTESTATION|CONTRAT|TOTAL|DATE/.test(s));if(l)r.organisme=l.toLowerCase().replace(/(^|\s|-)\S/g,s=>s.toUpperCase())}
   }
   // type de document
   let type=null;for(const [re,nom,cat,per] of STRONG){if(re.test(head)){type={nom,cat,per};break}}
@@ -713,6 +750,7 @@ function analyse(text,docs=DOCS){
   const lc=learned&&Object.entries(learned).sort((a,b)=>b[1]-a[1])[0];
   r.categorie=lc?lc[0]:type?.cat||best?.cat||(KEYCAT.find(([re])=>re.test(n))||[])[1]||'divers';
   r.appris=!!lc;
+  if(r.categorie==='identite'&&!lc) delete r.organisme;
   // dates
   const ds=findDates(n);
   const before=(d,k)=>{const st=n.lastIndexOf('\n',d.i-1)+1;return n.slice(Math.max(st,d.i-k),d.i)};
@@ -724,7 +762,7 @@ function analyse(text,docs=DOCS){
   const ech=ds.find(d=>isEch(d)&&(!r.date||d.iso>=r.date));
   if(ech) r.echeance=ech.iso;
   // montant
-  const noAmt=type&&/Relevé de compte|Bulletin de paie|Attestation d'assurance|Carte grise|Ordonnance/.test(type.nom);
+  const noAmt=(type&&/Relevé de compte|Bulletin de paie|Attestation d'assurance|Carte grise|Ordonnance|Passeport|Carte d'identité|Permis|Livret|Acte|RIB/.test(type.nom))||['banque','identite','travail'].includes(r.categorie);
   if(!noAmt){
     const LABELS=['net a payer','montant a payer','reste a payer','somme a payer','total a payer','montant de votre impot','montant total ttc','total ttc','montant ttc','total facture','montant preleve','montant du','total general','montant total','total','montant'];
     for(const lb of LABELS){
@@ -969,7 +1007,7 @@ async function sbClient(){
   if(sb) return sb;
   if(!sbUrl()||!sbKey()) return null;
   await loadScript(LIB.sb);
-  sb=supabase.createClient(sbUrl(),sbKey(),{auth:{persistSession:true,autoRefreshToken:true,storageKey:'mp-sb-auth'}});
+  sb=supabase.createClient(sbUrl(),sbKey(),{auth:{persistSession:true,autoRefreshToken:true,storageKey:'mp-sb-auth',storage:secureStore}});
   const {data}=await sb.auth.getSession();sbUser=data.session?.user||null;
   sb.auth.onAuthStateChange((_e,s)=>{sbUser=s?.user||null;syncStatus()});
   return sb;
@@ -1099,7 +1137,7 @@ $('#pcOk').onclick=async()=>{
       if(error) throw error;
       const {data}=await sb.auth.getSession();sbUser=data.session?.user||null;
     }
-    hide('#ovPc');toast('Connecté au cloud');sync();
+    hide('#ovPc');toast('Connecté au cloud');await askNewPin();lockBtn();sync();
   }catch(e){msg.textContent='❌ '+FR_ERR(e.message||String(e))}
 };
 $('#sbSignup').onclick=async()=>{
@@ -1108,7 +1146,7 @@ $('#sbSignup').onclick=async()=>{
     await prepCloud();
     const {data,error}=await sb.auth.signUp({email:$('#sbMail').value.trim(),password:$('#sbPass').value});
     if(error) throw error;
-    if(data.session){sbUser=data.session.user;hide('#ovPc');toast('Compte créé, connecté');sync()}
+    if(data.session){sbUser=data.session.user;hide('#ovPc');toast('Compte créé, connecté');await askNewPin();lockBtn();sync()}
     else msg.innerHTML='📧 Compte créé. <b>Ouvre le mail de confirmation</b> envoyé par Supabase, clique sur le lien, puis reviens ici et appuie sur « Se connecter ».';
   }catch(e){msg.textContent='❌ '+FR_ERR(e.message||String(e))}
 };
@@ -1122,12 +1160,94 @@ setInterval(()=>{if(server())sync()},60000);
 window.addEventListener('online',syncSoon);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncSoon()});
 
+/* ---------- code à 8 chiffres (chiffre la connexion au cloud) ---------- */
+const CRYPTO_OK=!!(window.crypto&&crypto.subtle&&window.isSecureContext);
+const tenc=new TextEncoder(),tdec=new TextDecoder();
+const b64=u=>{let s='';new Uint8Array(u).forEach(c=>s+=String.fromCharCode(c));return btoa(s)};
+const ub64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function pinKey(pin,salt){
+  const base=await crypto.subtle.importKey('raw',tenc.encode(pin),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function encStr(key,str){const iv=crypto.getRandomValues(new Uint8Array(12));return b64(iv)+'.'+b64(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,tenc.encode(str)))}
+async function decStr(key,s){const [iv,ct]=s.split('.');return tdec.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:ub64(iv)},key,ub64(ct)))}
+let PINKEY=null;
+const pinRec=()=>{try{return JSON.parse(localStorage.getItem('mp-pin')||'null')}catch(e){return null}};
+const pinSet=()=>CRYPTO_OK&&!!pinRec();
+// rangement de la connexion Supabase : chiffrée dès qu'un code existe
+const secureStore={
+  getItem:async k=>{const v=LS.get('mp-enc-'+k,null);if(v){if(!PINKEY)return null;try{return await decStr(PINKEY,v)}catch(e){return null}}return pinSet()?null:LS.get(k,null)},
+  setItem:async(k,v)=>{if(PINKEY){LS.set('mp-enc-'+k,await encStr(PINKEY,v));try{localStorage.removeItem(k)}catch(e){}}else LS.set(k,v)},
+  removeItem:async k=>{try{localStorage.removeItem(k);localStorage.removeItem('mp-enc-'+k)}catch(e){}}
+};
+function wipeLogin(){
+  try{Object.keys(localStorage).filter(k=>/^mp-enc-|^mp-sb-auth|^mp-pin/.test(k)).forEach(k=>localStorage.removeItem(k))}catch(e){}
+}
+const weakPin=p=>/^(\d)\1+$/.test(p)||'0123456789012345678'.includes(p)||'9876543210987654321'.includes(p)||/^(\d\d)\1+$/.test(p)||/^(\d{4})\1$/.test(p);
+let lockState=null;
+function lockDots(n,shake){const d=$('#lockDots');d.innerHTML=Array.from({length:8},(_,i)=>`<i class="${i<n?'f':''}"></i>`).join('');if(shake){d.classList.remove('shake');void d.offsetWidth;d.classList.add('shake')}}
+function lockMsg(t,err){const m=$('#lockMsg');m.textContent=t;m.className=err?'err':''}
+function openLock(mode){
+  return new Promise(res=>{
+    lockState={mode,code:'',first:'',res,busy:false};
+    $('#lockForgot').style.display=mode==='unlock'?'':'none';
+    lockMsg(mode==='unlock'?'Entre ton code':'Choisis un code à 8 chiffres pour protéger tes papiers');
+    lockDots(0);$('#lock').classList.add('on');
+    document.querySelectorAll('.ov.on').forEach(o=>o.classList.remove('on'));
+  });
+}
+async function lockKey(k){
+  const s=lockState;if(!s||s.busy)return;
+  if(k==='back'){s.code=s.code.slice(0,-1);lockDots(s.code.length);return}
+  if(!/^\d$/.test(k)||s.code.length>=8)return;
+  s.code+=k;lockDots(s.code.length);
+  if(s.code.length<8)return;
+  const code=s.code;s.code='';
+  if(s.mode==='unlock'){
+    const wait=+LS.get('mp-pin-wait','0');
+    if(Date.now()<wait){lockMsg(`Trop d'erreurs : attends ${Math.ceil((wait-Date.now())/1000)} s`,true);lockDots(0,true);return}
+    s.busy=true;lockMsg('Vérification…');
+    const r=pinRec();let ok=false,key=null;
+    try{key=await pinKey(code,ub64(r.salt));ok=(await decStr(key,r.check))==='mes-papiers-ok'}catch(e){ok=false}
+    s.busy=false;
+    if(ok){LS.set('mp-pin-fails','0');PINKEY=key;$('#lock').classList.remove('on');lockState=null;s.res(true);return}
+    const fails=+LS.get('mp-pin-fails','0')+1;LS.set('mp-pin-fails',String(fails));
+    if(fails>=10){wipeLogin();LS.set('mp-pin-fails','0');lockMsg('10 erreurs : connexion effacée. Reconnecte-toi avec ton e-mail et ton mot de passe.',true);setTimeout(()=>location.reload(),2500);return}
+    if(fails>=5) LS.set('mp-pin-wait',String(Date.now()+30000));
+    lockMsg(`Code incorrect (${10-fails} essai${10-fails>1?'s':''} restant${10-fails>1?'s':''})`,true);lockDots(0,true);
+  }else if(!s.first){
+    if(weakPin(code)){lockMsg('Code trop simple, choisis-en un autre',true);lockDots(0,true);return}
+    s.first=code;lockMsg('Tape-le une deuxième fois pour confirmer');lockDots(0);
+  }else{
+    if(code!==s.first){s.first='';lockMsg('Les deux codes ne correspondent pas. Recommence.',true);lockDots(0,true);return}
+    s.busy=true;lockMsg('Enregistrement…');
+    const salt=crypto.getRandomValues(new Uint8Array(16)),key=await pinKey(code,salt);
+    const old={};try{Object.keys(localStorage).filter(k=>/^mp-sb-auth/.test(k)).forEach(k=>old[k]=localStorage.getItem(k))}catch(e){}
+    LS.set('mp-pin',JSON.stringify({salt:b64(salt),check:await encStr(key,'mes-papiers-ok')}));
+    PINKEY=key;
+    for(const [k,v] of Object.entries(old)) await secureStore.setItem(k,v);   // chiffre la connexion existante
+    s.busy=false;$('#lock').classList.remove('on');lockState=null;toast('Code enregistré');s.res(true);
+  }
+}
+$('#lockPad').addEventListener('click',e=>{const b=e.target.closest('button');if(b)lockKey(b.dataset.k||b.textContent.trim())});
+document.addEventListener('keydown',e=>{if(!lockState)return;if(/^\d$/.test(e.key))lockKey(e.key);else if(e.key==='Backspace')lockKey('back');e.preventDefault()},true);
+$('#lockForgot').onclick=e=>{e.preventDefault();if(confirm('Effacer la connexion de cet appareil ? Tu devras te reconnecter avec ton e-mail et ton mot de passe, puis choisir un nouveau code. Tes documents ne sont pas touchés.')){wipeLogin();location.reload()}};
+async function askNewPin(){if(CRYPTO_OK&&sbUser&&!pinSet()) await openLock('set')}
+// reverrouille après 5 minutes en arrière-plan
+let hiddenAt=0;
+document.addEventListener('visibilitychange',()=>{if(document.hidden)hiddenAt=Date.now();else if(pinSet()&&hiddenAt&&Date.now()-hiddenAt>5*60000)location.reload()});
+
+function lockBtn(){$('#bLock').style.display=pinSet()?'':'none'}
+$('#bLock').onclick=()=>location.reload();
+
 /* ---------- démarrage ---------- */
 (async()=>{
+  if(pinSet()) await openLock('unlock');
   try{await openDB();DOCS=await dbAll()}catch(err){$('#view').innerHTML=`<div class="empty"><b>Stockage indisponible</b>${esc(err.message)}<br>Ouvre ce fichier dans Chrome, Edge ou Firefox (pas en navigation privée).</div>`;return}
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist();
   render();
   try{await sbClient()}catch(e){}
+  await askNewPin();lockBtn();
   syncStatus();sync();
   const lb=localStorage.getItem('mp-last-backup');
   if(DOCS.length>5&&(!lb||daysTo(lb)<-30)) setTimeout(()=>toast('Pense à faire une sauvegarde (bouton 💾 à gauche)'),1200);
