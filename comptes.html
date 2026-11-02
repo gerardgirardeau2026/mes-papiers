@@ -60,6 +60,15 @@ td input.in:hover,td select.in:hover{border-color:var(--line)}
 td input.in:focus,td select.in:focus{border-color:var(--accent);background:#fff;outline:none}
 td input.in.num{text-align:right}
 select.rub.vide{background:var(--warn-soft);border-color:#efc9b3}
+.rubbtn{width:100%;display:flex;justify-content:space-between;align-items:center;gap:6px;text-align:left;border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 7px;cursor:pointer;font-size:13px;min-height:28px}
+.rubbtn:hover{border-color:var(--line);background:#fff}.rubbtn::after{content:'▾';color:var(--muted);font-size:11px}
+.rubbtn.vide{background:var(--warn-soft);border-color:#efc9b3;color:var(--warn)}
+#rubPick{position:fixed;z-index:45;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);width:300px;max-height:360px;display:flex;flex-direction:column;overflow:hidden}
+#rubPick input{border:0;border-bottom:1px solid var(--line);padding:10px 12px;font-size:14px;outline:none}
+#rubPick ul{list-style:none;margin:0;padding:4px 0;overflow:auto}
+#rubPick li{padding:6px 12px;cursor:pointer;font-size:13.5px}#rubPick li.g{cursor:default;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:8px 12px 3px}
+#rubPick li.on{background:var(--accent-soft);color:var(--accent)}#rubPick li.cur{font-weight:700}#rubPick li.vide{color:var(--warn)}
+#rubPick mark{background:#ffe9a8;color:inherit;padding:0}#rubPick .rien{padding:10px 12px;color:var(--muted);font-size:13px}
 .badge{font-size:12px;padding:2px 8px;border-radius:20px;white-space:nowrap;display:inline-block}
 .b-ok{background:var(--accent-soft);color:var(--accent)}.b-err{background:#f8e1e1;color:var(--danger)}.b-warn{background:var(--warn-soft);color:var(--warn)}.b-grey{background:#eee;color:var(--muted)}
 .empty{text-align:center;padding:40px 20px;color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:var(--radius)}
@@ -362,6 +371,49 @@ function rubOptions(sel,withEmpty=true){
   return (withEmpty?`<option value="">— à classer —</option>`:'')+(!known?`<option selected value="${esc(sel)}">⚠ ${esc(sel)} (inconnue)</option>`:'')+
     `<optgroup label="Dépenses">${g('depense')}</optgroup><optgroup label="Recettes">${g('recette')}</optgroup><optgroup label="Ignorées (virements internes)">${g('ignore')}</optgroup>`;
 }
+/* sélecteur de rubrique avec recherche */
+function pickRub(anchor,current,onPick,montant){
+  closePick();
+  const box=document.createElement('div');box.id='rubPick';
+  box.innerHTML=`<input placeholder="Tape une lettre ou un mot…" autocomplete="off"><ul style="position:relative"></ul>`;
+  document.body.appendChild(box);
+  const r=anchor.getBoundingClientRect(),h=360,below=window.innerHeight-r.bottom>h||r.top<h;
+  box.style.left=Math.max(8,Math.min(r.left,window.innerWidth-308))+'px';
+  if(below)box.style.top=(r.bottom+4)+'px';else box.style.bottom=(window.innerHeight-r.top+4)+'px';
+  const inp=box.querySelector('input'),ul=box.querySelector('ul');let items=[],on=0,tout=!montant;
+  const GR=[['depense','Dépenses'],['recette','Recettes'],['ignore','Ignorées (virements internes)']];
+  const hl=(t,q)=>{if(!q)return esc(t);const i=norm(t).indexOf(q);return i<0?esc(t):esc(t.slice(0,i))+'<mark>'+esc(t.slice(i,i+q.length))+'</mark>'+esc(t.slice(i+q.length))};
+  function draw(){
+    const q=norm(inp.value);items=[];let html='';
+    if(!q){items.push('');html+=`<li class="vide" data-k="0">— à classer —</li>`}
+    const sens=montant>0?'recette':'depense',cach=tout?0:D.rubs.filter(x=>x.type!==sens&&x.type!=='ignore'&&(!q||norm(x.nom).includes(q))).length;
+    for(const [t,lab] of GR){
+      if(!tout&&t!==sens&&t!=='ignore')continue;
+      let l=D.rubs.filter(x=>x.type===t&&(!q||norm(x.nom).includes(q)));
+      if(q)l=l.slice().sort((a,b)=>(norm(b.nom).startsWith(q)-norm(a.nom).startsWith(q)));
+      if(!l.length)continue;html+=`<li class="g">${lab}</li>`;
+      l.forEach(x=>{html+=`<li data-k="${items.length}" class="${norm(x.nom)===norm(current)?'cur':''}">${hl(x.nom,q)}</li>`;items.push(x.nom)});
+    }
+    if(!html)html='<div class="rien">Aucune rubrique ne contient « '+esc(inp.value)+' »</div>';
+    if(cach)html+=`<div class="rien" style="border-top:1px solid var(--line)"><a href="#" id="pkAll">Voir toutes les rubriques</a> <span>(${cach} ${montant>0?'dépense':'recette'}${cach>1?'s':''} masquée${cach>1?'s':''})</span></div>`;
+    ul.innerHTML=html;on=0;mark();
+    const a=ul.querySelector('#pkAll');if(a)a.onmousedown=e=>{e.preventDefault();e.stopPropagation();tout=true;draw();inp.focus()};
+  }
+  function mark(){ul.querySelectorAll('li[data-k]').forEach(li=>li.classList.toggle('on',+li.dataset.k===on));const el=ul.querySelector('li.on');if(el){const t=el.offsetTop,b=t+el.offsetHeight;if(t<ul.scrollTop)ul.scrollTop=t-4;else if(b>ul.scrollTop+ul.clientHeight)ul.scrollTop=b-ul.clientHeight+4}}
+  function choose(k){if(k==null||k>=items.length)return;const v=items[k];closePick();onPick(v)}
+  inp.oninput=draw;
+  inp.onkeydown=e=>{if(e.key==='ArrowDown'){on=Math.min(items.length-1,on+1);mark();e.preventDefault()}else if(e.key==='ArrowUp'){on=Math.max(0,on-1);mark();e.preventDefault()}
+    else if(e.key==='Enter'){e.preventDefault();choose(on)}else if(e.key==='Escape'){e.stopPropagation();closePick()}};
+  ul.onmousedown=e=>{const li=e.target.closest('li[data-k]');if(li){e.preventDefault();choose(+li.dataset.k)}};
+  draw();
+  const ci=items.findIndex(x=>x&&norm(x)===norm(current));if(ci>=0){on=ci;mark()}
+  setTimeout(()=>inp.focus(),0);
+}
+function closePick(){const b=$('#rubPick');if(b)b.remove()}
+document.addEventListener('mousedown',e=>{if($('#rubPick')&&!e.target.closest('#rubPick')&&!e.target.closest('.rubbtn'))closePick()});
+window.addEventListener('resize',closePick);document.addEventListener('scroll',e=>{if($('#rubPick')&&!e.target.closest?.('#rubPick'))closePick()},true);
+const rubBtn=(val,attrs)=>`<button type="button" class="rubbtn ${rubOf(val)?'':'vide'}" ${attrs}>${esc(rubOf(val)?.nom||(val?'⚠ '+val:'— à classer —'))}</button>`;
+
 function suggestMotif(lib){
   let s=String(lib||'').toUpperCase().replace(/[:;|]/g,' ');
   s=s.replace(/^(PRLV|PRELEVEMENT|VIR|VIREMENT|PAIEMENT|CB|CARTE|FACTURE CARTE|ACHAT|RETRAIT|DIFFERE\+?)( SEPA| INST| EUROPEEN| PAR CARTE| CB)?\s+/g,'').replace(/^(PRLV|VIR|SEPA|CB|CARTE)\s+/g,'');
@@ -374,7 +426,7 @@ const goA=f=>`data-go="${esc(JSON.stringify(Object.assign({compte:'',annee:'',mo
 document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g&&!e.target.closest('input,select,button:not([data-go])'))go('ops',JSON.parse(g.dataset.go))});
 const st={view:'dash',annee:new Date().getFullYear(),f:{compte:'',annee:String(new Date().getFullYear()),mois:'',rub:'',q:''},lim:300};
 const TITRES={dash:'Tableau de bord',ops:'Opérations',import:'Importer un relevé',recap:'Récap mensuel',annuel:'Récap annuel & budget',epargne:'Épargne',cheques:'Chèques',regles:'Règles de classement',rubriques:'Rubriques',reglages:'Comptes & réglages'};
-function go(v,f){if(v!=='regles')MAJ=null;$('#view').dataset.v='';st.view=v;if(f)Object.assign(st.f,f);st.lim=300;render();$('#side').classList.remove('open');window.scrollTo(0,0)}
+function go(v,f){closePick();if(v!=='regles')MAJ=null;$('#view').dataset.v='';st.view=v;if(f)Object.assign(st.f,f);st.lim=300;render();$('#side').classList.remove('open');window.scrollTo(0,0)}
 $('#nav').onclick=e=>{const b=e.target.closest('button[data-v]');if(b){MAJ=null;go(b.dataset.v)}};
 $('#bMenu').onclick=()=>$('#side').classList.toggle('open');
 function render(){
@@ -464,7 +516,7 @@ function vOps(){
   <tbody>${rows.slice(0,st.lim).map(({o,s})=>`<tr data-id="${o.id}"><td class="ln hide-m"></td><td class="d" style="white-space:nowrap">${fdate(o.date)}</td>${f.compte?'':`<td class="hide-m muted" style="white-space:nowrap">${esc(cNom(o.compte))}</td>`}
     <td class="clic lib" data-edit="${o.id}">${esc(o.libelle)}${o.note?`<div class="muted" style="font-size:12px">${esc(o.note)}</div>`:''}</td>
     <td class="num mt ${o.montant<0?'neg':'pos'}">${eur(o.montant)}</td>
-    <td class="rb"><select class="in rub ${aClasser(o)?'vide':''}" data-rub="${o.id}">${rubOptions(o.rubrique)}</select></td>
+    <td class="rb">${rubBtn(o.rubrique,`data-rub="${o.id}"`)}</td>
     ${single?`<td class="num hide-m ${s<0?'neg':''}">${eur(s)}</td>`:''}<td class="hide-m">${o.doc_id?'📎':''}</td></tr>`).join('')}</tbody></table></div>
   ${rows.length>st.lim?`<p style="text-align:center"><button class="btn" id="bMore">Afficher plus (${rows.length-st.lim} restantes)</button></p>`:''}`:'<div class="empty"><b>Aucune opération</b>Change les filtres ou importe un relevé.</div>'}`;
   const upd=k=>e=>{st.f[k]=e.target.value;st.lim=300;vOps()};
@@ -475,7 +527,8 @@ function vOps(){
   $('#bRel').onclick=openReleve;
   $('#bExpOps').onclick=()=>exportXlsx([['Date','Compte','Libellé','Montant','Rubrique','Note'],...list.map(o=>[o.date,cNom(o.compte),o.libelle,o.montant,o.rubrique,o.note||''])],'Operations','operations');
   $('#view').querySelectorAll('[data-edit]').forEach(td=>td.onclick=()=>openOp(D.ops.find(o=>o.id===td.dataset.edit)));
-  $('#view').querySelectorAll('select[data-rub]').forEach(s=>s.onchange=()=>changeRub(D.ops.find(o=>o.id===s.dataset.rub),s.value,s));
+  $('#view').querySelectorAll('.rubbtn[data-rub]').forEach(b=>b.onclick=()=>{const o=D.ops.find(x=>x.id===b.dataset.rub);
+    pickRub(b,o.rubrique,async v=>{if(norm(v)===norm(o.rubrique))return;await changeRub(o,v,b);b.textContent=rubOf(v)?.nom||'— à classer —';b.classList.toggle('vide',aClasser(o))},o.montant)});
 }
 async function changeRub(o,rub,sel){
   try{chk(await sb.from('cpt_operations').update({rubrique:rub}).eq('id',o.id),'classement')}catch(e){toast('Erreur : '+e.message);return}
@@ -676,6 +729,10 @@ function prepImport(){
   renderImport();
 }
 function renderImport(){
+  const oldTw=document.querySelector('#iRes .tw'),oldT=oldTw?oldTw.scrollTop:0,y=window.scrollY;
+  renderImport0();const nt=document.querySelector('#iRes .tw');if(nt)nt.scrollTop=oldT;window.scrollTo(0,y);
+}
+function renderImport0(){
   const L=IMP.lines,nN=L.filter(l=>!l.dbl).length,nD=L.length-nN,nC=L.filter(l=>l.ok&&!rubOf(l.rub)).length;
   const c=compte(IMP.compte),last=[...L].reverse().find(l=>l.solde!=null);
   let soldeMsg='';
@@ -690,21 +747,22 @@ function renderImport(){
   <div class="tw" style="max-height:60vh"><table><thead><tr><th class="ln">N°</th><th style="width:30px"><input type="checkbox" id="iAll" ${L.every(l=>l.ok||l.dbl)?'checked':''}></th><th>Date</th><th>Libellé</th><th class="num">Montant</th><th style="min-width:200px">Rubrique</th><th>Retenir pour la suite</th></tr></thead>
   <tbody>${L.map((l,i)=>`<tr style="${l.dbl?'opacity:.5':''}"><td class="ln">${i+1}</td><td><input type="checkbox" data-i="${i}" data-k="ok" ${l.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(l.date)}</td><td>${esc(l.lib)}${l.dbl?' <span class="badge b-grey">déjà là</span>':''}</td>
     <td class="num ${l.mt<0?'neg':'pos'}">${eur(l.mt)}</td>
-    <td><select class="in rub ${rubOf(l.rub)?'':'vide'}" data-i="${i}" data-k="rub">${rubOptions(l.rub)}</select></td>
+    <td>${rubBtn(l.rub,`data-ib="${i}"`)}</td>
     <td>${l.auto?'<span class="muted" style="font-size:12px">règle existante</span>':`<input class="in" data-i="${i}" data-k="motif" value="${esc(l.motif)}" placeholder="${rubOf(l.rub)?'motif à retenir':''}" ${rubOf(l.rub)?'':'disabled'}>`}</td></tr>`).join('')}</tbody></table></div>
   <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;align-items:center"><span class="muted" style="font-size:13px;margin-right:auto">Astuce : quand tu choisis une rubrique, les autres lignes au même libellé suivent, et le « motif » sera retenu pour les prochains relevés.</span>
   <button class="btn" id="iCancel">Annuler</button><button class="btn pri" id="iSave" ${L.some(l=>l.ok)?'':'disabled'}>Enregistrer ${L.filter(l=>l.ok).length} opération(s)</button></div>`;
   if($('#iTab'))$('#iTab').onchange=e=>{IMP.tab=+e.target.value;prepImport()};
   $('#iAll').onchange=e=>{L.forEach(l=>{if(!l.dbl)l.ok=e.target.checked});renderImport()};
   $('#iCancel').onclick=()=>{IMP=null;vImport()};
+  const setRub=(l,v)=>{l.rub=v;l.auto=false;
+      if(rubOf(l.rub)){l.motif=l.motif||suggestMotif(l.lib);const m=norm(l.motif);if(m)L.forEach(x=>{if(x!==l&&!rubOf(x.rub)&&norm(x.lib).includes(m)){x.rub=l.rub;x.auto=true}})}
+      renderImport()};
   $('#iRes').querySelectorAll('[data-k]').forEach(el=>el.onchange=()=>{
     const l=L[+el.dataset.i],k=el.dataset.k;
-    if(k==='ok')l.ok=el.checked;
-    else if(k==='motif')l.motif=el.value.trim();
-    else{l.rub=el.value;l.auto=false;
-      if(rubOf(l.rub)){l.motif=l.motif||suggestMotif(l.lib);const m=norm(l.motif);if(m)L.forEach(x=>{if(x!==l&&!rubOf(x.rub)&&norm(x.lib).includes(m)){x.rub=l.rub;x.auto=true}})}}
+    if(k==='ok')l.ok=el.checked;else if(k==='motif')l.motif=el.value.trim();
     renderImport();
   });
+  $('#iRes').querySelectorAll('.rubbtn[data-ib]').forEach(b=>b.onclick=()=>{const l=L[+b.dataset.ib];pickRub(b,l.rub,v=>setRub(l,v),l.mt)});
   $('#iSave').onclick=enregistreImport;
 }
 async function enregistreImport(){
