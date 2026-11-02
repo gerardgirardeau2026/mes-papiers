@@ -56,7 +56,7 @@ table.recap td:first-child,table.recap th:first-child{border-right:2px solid var
 table.recap td:first-child,table.recap th:first-child{position:sticky;left:0;background:var(--panel);z-index:2;white-space:nowrap}
 table.recap th:first-child{background:var(--th-bg);z-index:3}
 table.recap tr.tot td{font-weight:700;background:var(--tot)}
-table.recap tr.sec td{border-right:0!important;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:12px;text-transform:uppercase}
+table.recap tr.sec td{border-right:0!important;background:var(--th-bg);color:var(--th-fg);letter-spacing:.04em;font-weight:700;font-size:12px;text-transform:uppercase}
 table.recap tr.sol td{background:var(--sol);color:var(--muted)}
 td input.in,td select.in{border:1px solid transparent;background:transparent;border-radius:6px;padding:3px 5px;width:100%;font-size:13px}
 td input.in:hover,td select.in:hover{border-color:var(--line)}
@@ -157,6 +157,7 @@ body[data-theme=sombre] #rubPick mark{background:#6b5a1f}
 .rel .pied{font-size:9.5px;color:#555;margin-top:4px}
 @media print{body.printing .app,body.printing .ov,body.printing .toast,body.printing .lock{display:none!important}body.printing #printZone{display:block}@page{margin:12mm}}
 @media print{aside,.top .btn,.top select,.filters,.noprint{display:none!important}.app{display:block}main{padding:0}.tw,.box{box-shadow:none;border:0}th{position:static}}
+input.num,.in.num{text-align:right}
 </style>
 </head>
 <body>
@@ -928,7 +929,7 @@ function vEpargne(){
   const tot=m=>sups.reduce((t,s)=>t+(+val(s,m)||0),0);
   const prev=D.epargne.filter(e=>e.annee===epAn-1);
   $('#view').innerHTML=sups.length?`<div class="tw"><table class="recap"><thead><tr><th>${epAn}</th>${MOISC.map(m=>`<th class="num">${m}</th>`).join('')}<th></th></tr></thead><tbody>
-    ${sups.map(s=>`<tr><td><input class="in" data-ren="${esc(s)}" value="${esc(s)}" title="${esc(s)}" style="width:230px"></td>${MOISC.map((_,i)=>`<td style="padding:3px 2px"><input class="in num" data-s="${esc(s)}" data-m="${i+1}" value="${val(s,i+1)??''}" style="width:72px;font-size:12.5px" inputmode="decimal"></td>`).join('')}<td><button class="ib" data-del="${esc(s)}" title="Supprimer ce support pour ${epAn}">✕</button></td></tr>`).join('')}
+    ${sups.map(s=>`<tr><td><input class="in" data-ren="${esc(s)}" value="${esc(s)}" title="${esc(s)}" style="width:230px"></td>${MOISC.map((_,i)=>`<td class="num" style="padding:3px 4px"><input class="in num" data-s="${esc(s)}" data-m="${i+1}" value="${val(s,i+1)??''}" style="width:100%;min-width:72px;font-size:12.5px" inputmode="decimal"></td>`).join('')}<td><button class="ib" data-del="${esc(s)}" title="Supprimer ce support pour ${epAn}">✕</button></td></tr>`).join('')}
     <tr class="tot"><td>Total épargne</td>${MOISC.map((_,i)=>`<td class="num">${tot(i+1)?eur0(tot(i+1)):''}</td>`).join('')}<td></td></tr></tbody></table></div>
     <p class="muted" style="font-size:13px">Saisis la valeur de chaque support en fin de mois. Astuce : tape une valeur puis Tab pour passer au mois suivant.</p>`
     :`<div class="empty"><b>Aucun support d'épargne pour ${epAn}</b>${prev.length?`<button class="btn pri" id="bCopy">Reprendre les supports de ${epAn-1}</button>`:'Ajoute un support avec « + Support ».'}</div>`;
