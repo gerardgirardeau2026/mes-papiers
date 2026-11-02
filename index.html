@@ -118,6 +118,10 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .scan-big{display:flex;flex-direction:column;align-items:center;gap:8px;padding:26px;border:2px dashed var(--line);border-radius:12px;cursor:pointer;color:var(--muted);text-align:center}
 .scan-big b{font-size:17px;color:var(--accent)}
 .busy{opacity:.5;pointer-events:none}
+.auto{grid-column:1/-1;font-size:13.5px;padding:9px 12px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:none}
+.auto.on{display:block}
+.auto.err{background:#f3f1ec;color:var(--muted)}
+.form .filled{background:#f0f8f3;border-color:#a9cdb9}
 .sync{display:flex;align-items:center;gap:6px;font-size:12.5px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 .sync span{flex:1;line-height:1.3}
 .sync button{padding:3px 8px;font-size:12px}
@@ -141,12 +145,12 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
     <div class="logo">Mes <span>Papiers</span></div>
     <div class="nav" id="nav"></div>
     <div class="side-foot">
-      <div class="sync" id="syncBox"><span id="syncStat">🖥️ PC non configuré</span><button id="bPc">Régler</button></div>
+      <div class="sync" id="syncBox"><span id="syncStat">☁️ Cloud non configuré</span><button id="bPc">Régler</button></div>
       <button id="bExport">💾 Sauvegarder tout (fichier)</button>
       <button id="bImport">📂 Restaurer une sauvegarde</button>
       <button id="bCsv">📊 Exporter la liste (Excel)</button>
       <input type="file" id="fImport" accept=".json,application/json" hidden>
-      <small>Tout reste sur cet ordinateur, dans ce navigateur. Fais une sauvegarde de temps en temps (clé USB, disque externe).</small>
+      <small>Tes papiers sont rangés dans ton cloud Supabase et recopiés sur ton PC (D:\GGI\MESPAPIERS).</small>
     </div>
   </aside>
 
@@ -169,6 +173,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
     <div class="mh"><h3 id="formTitle">Nouveau document</h3><button class="x" data-close>×</button></div>
     <div class="mb">
       <form class="form" id="form" autocomplete="off">
+        <div class="auto" id="autoInfo"></div>
         <label class="full">Intitulé *<input name="titre" required placeholder="ex. Facture électricité janvier"></label>
         <label>Catégorie<select name="categorie" id="selCat"></select></label>
         <label>Organisme / fournisseur<input name="organisme" list="dlOrg" placeholder="EDF, MAAF, Crédit Agricole…"></label>
@@ -224,19 +229,27 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
   </div>
 </div>
 
-<!-- Réglage PC -->
+<!-- Réglage cloud -->
 <div class="ov" id="ovPc">
   <div class="modal" style="width:min(520px,100%)">
-    <div class="mh"><h3>Envoi automatique vers mon PC</h3><button class="x" data-close>×</button></div>
+    <div class="mh"><h3>Mes papiers dans le cloud</h3><button class="x" data-close>×</button></div>
     <div class="mb form" style="grid-template-columns:1fr">
-      <label>Adresse de ton PC (Tailscale)
-        <input id="pcUrl" placeholder="https://mon-pc.tailXXXX.ts.net" inputmode="url" autocapitalize="off" spellcheck="false"></label>
-      <p class="muted" style="margin:0;font-size:13px">Sur le PC, lance « Lancer Mes Papiers » puis, une seule fois, <code>tailscale serve --bg 8765</code>. L'adresse à recopier ici s'affiche alors. Laisse vide pour ne rien envoyer.</p>
+      <div id="cfgBox" style="display:grid;gap:12px">
+        <label>Adresse du projet Supabase
+          <input id="sbUrl" placeholder="https://xxxxxxxx.supabase.co" inputmode="url" autocapitalize="off" spellcheck="false"></label>
+        <label>Clé publique (« anon » ou « publishable »)
+          <input id="sbKey" placeholder="eyJhbGciOi… ou sb_publishable_…" autocapitalize="off" spellcheck="false"></label>
+      </div>
+      <div id="loginBox" style="display:grid;gap:12px">
+        <label>E-mail<input id="sbMail" type="email" autocomplete="username" autocapitalize="off"></label>
+        <label>Mot de passe<input id="sbPass" type="password" autocomplete="current-password"></label>
+      </div>
+      <div id="userBox" style="font-size:14.5px"></div>
       <label style="display:flex;gap:10px;align-items:flex-start;color:var(--ink);font-size:14px"><input type="checkbox" id="pcNoKeep" style="width:auto;margin-top:3px">
-        <span><b>Ne rien garder sur cet appareil</b><br><span class="muted" style="font-size:13px">Recommandé pour le téléphone : chaque document est envoyé au PC puis effacé d'ici. Tu peux toujours les consulter, ils sont lus sur le PC à la demande.</span></span></label>
+        <span><b>Ne rien garder sur cet appareil</b><br><span class="muted" style="font-size:13px">Recommandé pour le téléphone : chaque document est envoyé dans le cloud puis effacé d'ici. Tu peux toujours les consulter, ils sont lus dans le cloud à la demande.</span></span></label>
       <p id="pcTest" style="margin:0;font-size:14px"></p>
     </div>
-    <div class="mf"><button class="btn" id="pcTry">Tester</button><button class="btn pri" id="pcOk">Enregistrer</button></div>
+    <div class="mf"><button class="btn" id="sbSignup">Créer mon compte</button><button class="btn dan" id="sbOut">Se déconnecter</button><button class="btn pri" id="pcOk">Se connecter</button></div>
   </div>
 </div>
 
@@ -397,17 +410,21 @@ function renderList(){
 
 /* ---------- formulaire ---------- */
 $('#selCat').innerHTML=CATS.map(c=>`<option value="${c.id}">${esc(c.nom)}</option>`).join('');
-function openForm(doc,files){
+function openForm(doc,files,canvas){
   editing=doc||null;
   const f=$('#form');f.reset();
+  autoRun++;$('#autoInfo').className='auto';
+  f.querySelectorAll('input,select,textarea').forEach(el=>{delete el.dataset.touched;el.classList.remove('filled')});
   $('#formTitle').textContent=doc?'Modifier le document':'Nouveau document';
   pending=doc?(doc.fichiers||[]).slice():[];
   if(doc){for(const k of ['titre','categorie','organisme','date','montant','echeance','reference','notes']) f[k].value=doc[k]??'';f.tags.value=(doc.tags||[]).join(', ')}
   else{f.date.value=today();if(st.view.startsWith('cat:'))f.categorie.value=st.view.slice(4)}
   if(files) addFiles(files);
   renderFiles();
-  show('#ovForm');setTimeout(()=>f.titre.focus(),50);
+  show('#ovForm');
+  if(!doc&&files&&files.length) autoFill(files,canvas); else setTimeout(()=>f.titre.focus(),50);
 }
+$('#form').addEventListener('input',e=>{e.target.dataset.touched=1;e.target.classList.remove('filled')});
 window.openForm=openForm;
 function addFiles(list){
   for(const file of list){
@@ -423,10 +440,10 @@ function renderFiles(){
 $('#fileList').onclick=e=>{const i=e.target.dataset.rm;if(i!=null){pending.splice(+i,1);renderFiles()}};
 const drop=$('#drop');
 drop.onclick=()=>$('#fFiles').click();
-$('#fFiles').onchange=e=>{addFiles(e.target.files);e.target.value=''};
+$('#fFiles').onchange=e=>{const fl=[...e.target.files];const first=!pending.length;addFiles(fl);e.target.value='';if(first&&!editing&&fl.length)autoFill(fl)};
 ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();drop.classList.add('hot')}));
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();drop.classList.remove('hot')}));
-drop.addEventListener('drop',e=>addFiles(e.dataTransfer.files));
+drop.addEventListener('drop',e=>{const fl=[...e.dataTransfer.files];const first=!pending.length;addFiles(fl);if(first&&!editing&&fl.length)autoFill(fl)});
 
 $('#bSave').onclick=async()=>{
   const f=$('#form');
@@ -461,7 +478,7 @@ function openDet(id){
       ${row('Référence',esc(d.reference))}
       ${row('Mots-clés',(d.tags||[]).map(t=>`<span class="chip">${esc(t)}</span>`).join(' '))}
       ${row('Notes',esc(d.notes).replace(/\n/g,'<br>'))}
-      ${server()?row('Rangement',d._sync==='ok'?(d._remote?'🖥️ Sur le PC uniquement':'✅ Copie sur le PC'):'⏳ Pas encore envoyé au PC'):''}
+      ${server()?row('Rangement',d._sync==='ok'?(d._remote?'☁️ Dans le cloud':'✅ Dans le cloud (+ copie ici)'):'⏳ Pas encore envoyé dans le cloud'):''}
       ${files.length?`<div><dt>Fichiers</dt><dd>${files.map((f,i)=>`<div><a href="#" data-dl="${i}">⬇ ${esc(f.nom)}</a> <span class="muted">${fsize(f.taille||0)}</span></div>`).join('')}</dd></div>`:''}
     </dl>
     <div class="preview">${files.length?`<div class="tabs">${files.map((f,i)=>`<button data-pv="${i}" class="${i?'':'on'}">${esc(f.nom)}</button>`).join('')}</div><div class="pv" id="pv"></div>`:'<div class="pv muted">Pas de fichier joint</div>'}</div>`;
@@ -481,7 +498,7 @@ async function showPv(d,i){
 $('#det').onclick=e=>{
   const d=DOCS.find(x=>x.id===detId);
   if(e.target.dataset.pv!=null) showPv(d,+e.target.dataset.pv);
-  if(e.target.dataset.dl!=null){e.preventDefault();const f=d.fichiers[+e.target.dataset.dl];getBlob(d,f).then(b=>download(b,f.nom)).catch(()=>toast('PC injoignable'))}
+  if(e.target.dataset.dl!=null){e.preventDefault();const f=d.fichiers[+e.target.dataset.dl];getBlob(d,f).then(b=>download(b,f.nom)).catch(()=>toast('Cloud injoignable'))}
 };
 $('#bEdit').onclick=()=>{const d=DOCS.find(x=>x.id===detId);hide('#ovDet');openForm(d)};
 $('#bDel').onclick=async()=>{
@@ -530,7 +547,7 @@ $('#bExport').onclick=async()=>{
   const out=[];
   try{
     for(const d of DOCS){const x={...d,fichiers:await Promise.all((d.fichiers||[]).map(async f=>({id:f.id,nom:f.nom,type:f.type,taille:f.taille,data:await toB64(await getBlob(d,f))})))};delete x._sync;delete x._remote;delete x._vuPc;out.push(x)}
-  }catch(e){toast('PC injoignable : sauvegarde impossible');return}
+  }catch(e){toast('Cloud injoignable : sauvegarde impossible');return}
   download(new Blob([JSON.stringify({app:'mes-papiers',version:1,date:new Date().toISOString(),docs:out})],{type:'application/json'}),`mes-papiers-sauvegarde-${today()}.json`);
   localStorage.setItem('mp-last-backup',today());
 };
@@ -555,6 +572,161 @@ $('#bCsv').onclick=()=>{
     .concat(sorted(list).map(d=>[fdate(d.date),d.titre,CAT[d.categorie]?.nom,d.organisme,d.montant===''||d.montant==null?'':String(d.montant).replace('.',','),fdate(d.echeance),d.reference,(d.tags||[]).join(', '),d.notes,(d.fichiers||[]).map(f=>f.nom).join(' | ')]));
   download(new Blob(['﻿'+rows.map(r=>r.map(c).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}),`mes-papiers-${today()}.csv`);
 };
+
+/* ---------- lecture automatique (OCR + PDF) ---------- */
+const LOCAL_LIB=/^https?:$/.test(location.protocol)&&!/github\.io$/.test(location.hostname);
+const absLib=f=>new URL('lib/'+f,location.href).href;
+const LIB=LOCAL_LIB?{tess:absLib('tesseract.min.js'),pdf:absLib('pdf.min.js'),pdfWorker:absLib('pdf.worker.min.js'),sb:absLib('supabase.js')}
+  :{tess:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',pdf:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',pdfWorker:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',sb:'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js'};
+const scripts={};
+function loadScript(src){return scripts[src]||(scripts[src]=new Promise((ok,ko)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>{delete scripts[src];ko(new Error('outil de lecture introuvable'))};document.head.appendChild(s)}))}
+let ocrWorker=null,ocrProgress=()=>{};
+async function getOcr(){
+  if(ocrWorker) return ocrWorker;
+  await loadScript(LIB.tess);
+  const opt={logger:m=>{if(m.status==='recognizing text')ocrProgress(Math.round(m.progress*100)+' %');else ocrProgress('(préparation)')}};
+  if(LOCAL_LIB) Object.assign(opt,{workerPath:absLib('worker.min.js'),corePath:new URL('lib/',location.href).href,langPath:new URL('lib',location.href).href,gzip:true,workerBlobURL:false});
+  ocrWorker=Tesseract.createWorker('fra',1,opt);
+  try{ocrWorker=await ocrWorker}catch(e){ocrWorker=null;throw e}
+  return ocrWorker;
+}
+async function ocr(canvas){
+  const c=shrink(canvas,2200);
+  const w=await getOcr();
+  const {data}=await w.recognize(c);
+  return data.text||'';
+}
+async function extractText(files,canvas){
+  if(canvas) return ocr(canvas);
+  const f=files[0];
+  if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+    await loadScript(LIB.pdf);pdfjsLib.GlobalWorkerOptions.workerSrc=LIB.pdfWorker;
+    const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+    let t='';
+    for(let i=1;i<=Math.min(2,pdf.numPages);i++){
+      const items=(await (await pdf.getPage(i)).getTextContent()).items;let y=null;
+      for(const it of items){const ny=it.transform[5];if(y!==null&&Math.abs(ny-y)>3)t+='\n';else if(t&&!/\s$/.test(t))t+=' ';t+=it.str;y=ny}
+      t+='\n';
+    }
+    if(t.replace(/\s/g,'').length>40) return t;
+    // PDF scanné (image) : on le dessine puis on le lit
+    const pg=await pdf.getPage(1),vp=pg.getViewport({scale:2});
+    const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;
+    await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+    return ocr(c);
+  }
+  if(f.type.startsWith('image/')){
+    const img=await loadImg(f);const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;c.getContext('2d').drawImage(img,0,0);
+    return ocr(c);
+  }
+  return '';
+}
+
+/* ---------- analyse du texte ---------- */
+const norm=s=>s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[’`´]/g,"'").replace(/[ \t  ]+/g,' ');
+const ORGS=[
+ ['credit agricole','Crédit Agricole','banque'],["caisse d.epargne","Caisse d'Épargne",'banque'],['bnp paribas|\\bbnp\\b','BNP Paribas','banque'],['societe generale','Société Générale','banque'],['\\blcl\\b','LCL','banque'],['credit mutuel','Crédit Mutuel','banque'],['\\bcic\\b','CIC','banque'],['banque postale','La Banque Postale','banque'],['boursorama|boursobank','BoursoBank','banque'],['banque populaire','Banque Populaire','banque'],['fortuneo','Fortuneo','banque'],['revolut','Revolut','banque'],['\\bn26\\b','N26','banque'],['hello ?bank','Hello bank!','banque'],
+ ['\\bedf\\b|electricite de france','EDF','factures'],['\\bengie\\b','Engie','factures'],['totalenergies|total energies','TotalEnergies','factures'],['veolia','Veolia','factures'],['\\bsuez\\b','Suez','factures'],['\\bsaur\\b','Saur','factures'],['ekwateur','ekWateur','factures'],['\\bgrdf\\b','GRDF','factures'],['enedis','Enedis','factures'],
+ ['\\bsosh\\b','Sosh','abonnements'],['\\borange\\b','Orange','abonnements'],['\\bsfr\\b','SFR','abonnements'],['free mobile|freebox','Free','abonnements'],['bouygues','Bouygues Telecom','abonnements'],['netflix','Netflix','abonnements'],['canal ?\\+|canal plus','Canal+','abonnements'],['spotify','Spotify','abonnements'],['deezer','Deezer','abonnements'],['disney','Disney+','abonnements'],
+ ['\\bmaaf\\b','MAAF','assurances'],['\\bmacif\\b','MACIF','assurances'],['\\bmaif\\b','MAIF','assurances'],['\\baxa\\b','AXA','assurances'],['allianz','Allianz','assurances'],['groupama','Groupama','assurances'],['matmut','Matmut','assurances'],['\\bgmf\\b','GMF','assurances'],['\\bmma\\b','MMA','assurances'],['generali','Generali','assurances'],['pacifica','Pacifica','assurances'],['direct assurance','Direct Assurance','assurances'],['\\bapril\\b','April','assurances'],['abeille assurances','Abeille Assurances','assurances'],
+ ['assurance maladie|\\bcpam\\b|ameli\\.fr','Assurance Maladie','sante'],['harmonie mutuelle','Harmonie Mutuelle','sante'],['\\bmgen\\b','MGEN','sante'],['malakoff','Malakoff Humanis','sante'],['pharmacie','Pharmacie','sante'],['laboratoire|biologie medicale','Laboratoire','sante'],['clinique','Clinique','sante'],['centre hospitalier|\\bhopital\\b','Hôpital','sante'],
+ ['finances publiques|\\bdgfip\\b|impots\\.gouv','Finances publiques','impots'],
+ ['norauto','Norauto','vehicule'],['feu vert','Feu Vert','vehicule'],['speedy','Speedy','vehicule'],['\\bmidas\\b','Midas','vehicule'],['carglass','Carglass','vehicule'],['autosur','Autosur','vehicule'],['dekra','Dekra','vehicule'],['securitest','Sécuritest','vehicule'],['\\bants\\b','ANTS','vehicule'],
+ ['foncia','Foncia','logement'],['nexity','Nexity','logement'],
+ ['\\bdarty\\b','Darty','garanties'],['boulanger','Boulanger','garanties'],['\\bfnac\\b','Fnac','garanties'],['leroy merlin','Leroy Merlin','garanties'],['castorama','Castorama','garanties'],['\\bikea\\b','IKEA','garanties'],['amazon','Amazon','garanties'],['cdiscount','Cdiscount','garanties'],['conforama','Conforama','garanties'],['\\bldlc\\b','LDLC','garanties'],['brico ?depot','Brico Dépôt','garanties'],
+ ['\\bcarsat\\b','Carsat','travail'],['agirc|arrco','Agirc-Arrco','travail'],['france travail|pole emploi','France Travail','travail'],['urssaf','Urssaf','travail'],
+].map(([r,n,c])=>[new RegExp(r),n,c]);
+const STRONG=[
+ ["avis d.imposition|impot sur le revenu","Avis d'imposition",'impots','an'],['taxe fonciere','Taxe foncière','impots','an'],["taxe d.habitation","Taxe d'habitation",'impots','an'],
+ ['releve de compte|releve de vos comptes|extrait de compte','Relevé de compte','banque','mois'],
+ ['bulletin de (paie|salaire)','Bulletin de paie','travail','mois'],
+ ["avis d.echeance","Avis d'échéance",'assurances','an'],["attestation d.assurance|carte verte|memo vehicule assure","Attestation d'assurance",'assurances','an'],
+ ['quittance','Quittance de loyer','logement','mois'],
+ ['ordonnance','Ordonnance','sante',''],['decompte|releve de (vos )?remboursements?','Décompte de remboursement','sante','mois'],
+ ['controle technique','Contrôle technique','vehicule',''],["certificat d.immatriculation|carte grise",'Carte grise','vehicule',''],
+].map(([r,n,c,p])=>[new RegExp(r),n,c,p]);
+const WEAK=[['facture','Facture','mois'],['devis','Devis',''],['bon de commande','Bon de commande',''],['echeancier','Échéancier','an'],['contrat','Contrat',''],['attestation','Attestation',''],['ticket|\\brecu\\b','Ticket','']].map(([r,n,p])=>[new RegExp(r),n,p]);
+const KEYCAT=[[/\bgarage\b|vidange|pneus?\b|carrosserie|immatriculation/,'vehicule'],[/\bloyer\b|\bsyndic\b|copropriete|bail\b/,'logement'],[/mutuelle|\bmedecin|\bdocteur\b|\bdr\b|kine|dentiste|optique|opticien/,'sante'],[/assurance|\bsinistre\b|cotisation/,'assurances'],[/garantie|\bsav\b/,'garanties'],[/electricite|\bgaz\b|consommation|\bkwh\b|\beau\b/,'factures'],[/abonnement|forfait/,'abonnements'],[/\bimpot|\bfiscal/,'impots'],[/banque|\biban\b|\bsolde\b/,'banque']];
+const MOIS=['janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];
+const MOISFR=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+function findDates(n){
+  const out=[],now=new Date().getFullYear(),add=(i,d,m,y)=>{d=+d;m=+m;y=+y;if(y<100)y+=2000;if(d>=1&&d<=31&&m>=1&&m<=12&&y>=1990&&y<=now+10)out.push({i,iso:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`})};
+  for(const m of n.matchAll(/(?<![\d])(\d{1,2})\s?[\/.\-]\s?(\d{1,2})\s?[\/.\-]\s?(\d{4}|\d{2})(?![\d])/g))add(m.index,m[1],m[2],m[3]);
+  for(const m of n.matchAll(new RegExp(`(?<![\\d])(\\d{1,2})(?:er)?\\s+(${MOIS.join('|')})\\s+(\\d{4})`,'g')))add(m.index,m[1],MOIS.indexOf(m[2])+1,m[3]);
+  return out.sort((a,b)=>a.i-b.i);
+}
+function parseAmt(s){const m=s.match(/(\d{1,3}(?:[ .]\d{3})+|\d+)\s?[,.]\s?(\d{2})(?!\d)/);if(!m)return null;const v=parseFloat(m[1].replace(/[ .]/g,'')+'.'+m[2]);return v>0&&v<1e6?v:null}
+function analyse(text,docs=DOCS){
+  const n=norm(text),head=n.slice(0,700),r={};
+  // fournisseur : celui qui apparaît le plus haut dans le document
+  let best=null;for(const [re,nom,cat] of ORGS){const m=n.match(re);if(m&&(!best||m.index<best.i))best={i:m.index,nom,cat}}
+  if(best){r.organisme=best.nom}
+  else{
+    const g=text.match(/garage\s+[A-Za-zÀ-ÿ'’\-]+(?:\s+[A-Za-zÀ-ÿ'’\-]+)?/i);
+    if(g) r.organisme=g[0].trim().replace(/\s+/g,' ').toLowerCase().replace(/(^|\s|-)\S/g,s=>s.toUpperCase());
+    else{const l=text.split('\n').map(s=>s.trim()).find(s=>s.length>=3&&s.length<=35&&!/\d/.test(s)&&(s.match(/[A-ZÀ-Ý]/g)||[]).length/s.replace(/[^A-Za-zÀ-ÿ]/g,'').length>.8&&/[A-Z]{3}/.test(s)&&!/FACTURE|DEVIS|AVIS|RELEVE|RELEVÉ|ATTESTATION|CONTRAT|TOTAL|DATE/.test(s));if(l)r.organisme=l.toLowerCase().replace(/(^|\s|-)\S/g,s=>s.toUpperCase())}
+  }
+  // type de document
+  let type=null;for(const [re,nom,cat,per] of STRONG){if(re.test(head)){type={nom,cat,per};break}}
+  if(!type){let w=null;for(const [re,nom,per] of WEAK){const m=n.match(re);if(m&&(!w||m.index<w.i))w={i:m.index,nom,per}}if(w)type={nom:w.nom,cat:null,per:w.per}}
+  // catégorie : d'abord tes habitudes, puis le type, le fournisseur, les mots-clés
+  const learned=r.organisme&&docs.filter(d=>d.organisme&&norm(d.organisme)===norm(r.organisme)).reduce((a,d)=>(a[d.categorie]=(a[d.categorie]||0)+1,a),{});
+  const lc=learned&&Object.entries(learned).sort((a,b)=>b[1]-a[1])[0];
+  r.categorie=lc?lc[0]:type?.cat||best?.cat||(KEYCAT.find(([re])=>re.test(n))||[])[1]||'divers';
+  r.appris=!!lc;
+  // dates
+  const ds=findDates(n);
+  const before=(d,k)=>{const st=n.lastIndexOf('\n',d.i-1)+1;return n.slice(Math.max(st,d.i-k),d.i)};
+  const lim=new Date(Date.now()+60*864e5).toISOString().slice(0,10);
+  const isEch=d=>/echeance|renouvel|valable jusqu|jusqu.au|date limite|limite de paiement|expir|fin de (la )?garantie|au plus tard|preleve le|prelevement le|sera preleve/.test(before(d,45));
+  const notMain=d=>isEch(d)||/naissance|periode du|du\s*$|depuis le|mise en circulation/.test(before(d,30));
+  const main=ds.find(d=>/date|emis|etabli|fait le|edite|le\s*$/.test(before(d,30))&&!notMain(d)&&d.iso<=lim)||ds.find(d=>!notMain(d)&&d.iso<=lim)||ds.find(d=>!isEch(d));
+  if(main) r.date=main.iso;
+  const ech=ds.find(d=>isEch(d)&&(!r.date||d.iso>=r.date));
+  if(ech) r.echeance=ech.iso;
+  // montant
+  const noAmt=type&&/Relevé de compte|Bulletin de paie|Attestation d'assurance|Carte grise|Ordonnance/.test(type.nom);
+  if(!noAmt){
+    const LABELS=['net a payer','montant a payer','reste a payer','somme a payer','total a payer','montant de votre impot','montant total ttc','total ttc','montant ttc','total facture','montant preleve','montant du','total general','montant total','total','montant'];
+    for(const lb of LABELS){
+      let i=-1,found=null;
+      while((i=n.indexOf(lb,i+1))>=0){if(lb==='total'&&/(sous|hors)[ -]?$/.test(n.slice(Math.max(0,i-6),i)))continue;if(/\bht\b/.test(n.slice(i+lb.length,i+lb.length+6)))continue;const v=parseAmt(n.slice(i+lb.length,i+lb.length+60));if(v){found=v;break}}
+      if(found){r.montant=found;break}
+    }
+    if(r.montant==null){const all=[...n.matchAll(/(\d{1,3}(?:[ .]\d{3})+|\d+)\s?[,.]\s?(\d{2})\s?(?:€|eur)/g)].map(m=>parseAmt(m[0])).filter(Boolean);if(all.length)r.montant=Math.max(...all)}
+  }
+  // référence
+  const ref=n.match(/(?:n[°o]|numero|ref(?:erence)?)\.?\s*(?:de\s+)?(?:la\s+)?(?:facture|contrat|client|police|societaire|adherent|dossier|commande|fiscal|avis)?\s*[:#]?\s*([a-z]{0,4}[\-\/]?\d[a-z0-9\-\/]{3,20})/);
+  if(ref) r.reference=ref[1].toUpperCase();
+  // garantie légale de 2 ans pour un achat
+  if(r.categorie==='garanties'&&!r.echeance&&r.date) r.echeance=(+r.date.slice(0,4)+2)+r.date.slice(4).replace('-02-29','-02-28');
+  // intitulé
+  if(type||r.organisme){
+    let t=(type?type.nom:'Document')+(r.organisme&&type?.cat!=='impots'?' '+r.organisme:'');
+    if(r.date&&type?.per==='mois'){const d=new Date(r.date+'T00:00');t+=` – ${MOISFR[d.getMonth()]} ${d.getFullYear()}`}
+    else if(r.date&&type?.per==='an') t+=' '+r.date.slice(0,4);
+    r.titre=t;
+  }
+  return r;
+}
+window.analyse=analyse;
+
+let autoRun=0;
+async function autoFill(files,canvas){
+  const run=++autoRun,info=$('#autoInfo');
+  info.className='auto on';info.textContent='🔎 Je lis le document…';
+  ocrProgress=p=>{if(run===autoRun)info.textContent='🔎 Je lis le document… '+p};
+  let text='';
+  try{text=await extractText(files,canvas)}catch(e){if(run===autoRun){info.className='auto on err';info.textContent='Lecture automatique impossible ('+e.message+'). Remplis la fiche à la main.'}return}
+  if(run!==autoRun||!$('#ovForm').classList.contains('on')) return;
+  const r=analyse(text),f=$('#form'),done=[];
+  const set=(k,v,label)=>{if(v==null||v==='')return;const el=f[k];if(el.dataset.touched)return;el.value=v;el.classList.add('filled');done.push(label)};
+  set('titre',r.titre,'intitulé');set('categorie',r.categorie,'catégorie'+(r.appris?' (comme d\'habitude pour '+r.organisme+')':''));
+  set('organisme',r.organisme,'fournisseur');set('date',r.date,'date');set('montant',r.montant!=null?r.montant.toFixed(2):'','montant');
+  set('echeance',r.echeance,'échéance');set('reference',r.reference,'référence');
+  if(done.length){info.className='auto on';info.innerHTML='✨ J\'ai rempli : <b>'+done.join(', ')+'</b>. Vérifie avant d\'enregistrer.'}
+  else{info.className='auto on err';info.textContent='Je n\'ai rien reconnu dans ce document. Remplis la fiche à la main.'}
+}
 
 /* ---------- scanner ---------- */
 let scan={pages:[],mode:'doc'};
@@ -655,22 +827,43 @@ async function makePdf(canvases){
 $('#scanDone').onclick=async()=>{
   const m=$('#ovScan .modal');m.classList.add('busy');$('#scanDone').textContent='Création du PDF…';
   try{
-    const pdf=await makePdf(scan.pages.map(p=>processPage(p,scan.mode)));
+    const canv=scan.pages.map(p=>processPage(p,scan.mode));
+    const ocrCanvas=scan.mode==='couleur'?processPage(scan.pages[0],'doc'):canv[0];
+    const pdf=await makePdf(canv);
     const name=`Scan ${new Date().toLocaleDateString('fr-FR').replace(/\//g,'-')} ${new Date().toTimeString().slice(0,5).replace(':','h')}.pdf`;
     const file=new File([pdf],name,{type:'application/pdf'});
     scan.pages=[];hide('#ovScan');
-    openForm(null,[file]);$('#form').titre.value='';$('#form').titre.placeholder='Qu\'est-ce que c\'est ? (ex. Facture garage Renault)';
+    openForm(null,[file],ocrCanvas);$('#form').titre.value='';$('#form').titre.placeholder='Qu\'est-ce que c\'est ? (ex. Facture garage Renault)';
   }catch(e){toast('Erreur : '+e.message)}
   m.classList.remove('busy');$('#scanDone').textContent='Créer le PDF et classer';
 };
 
-/* ---------- synchronisation avec le PC ---------- */
+/* ---------- synchronisation avec le cloud (Supabase) ---------- */
+// Projet Supabase de Gérard (la clé « anon » est faite pour être publique : la sécurité vient du mot de passe)
+const SB_CONF={url:'https://favbetrbvzxpvodsiimt.supabase.co',key:'sb_publishable_CVLnuDvOXmGz1TyyTCuBiQ__JUw7g0w'};
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
-const server=()=>LS.get('mp-server','').replace(/\/+$/,'');
+const sbUrl=()=>(LS.get('mp-sb-url','')||SB_CONF.url).trim().replace(/\/+$/,'');
+const sbKey=()=>(LS.get('mp-sb-key','')||SB_CONF.key).trim();
+let sb=null,sbUser=null;
+async function sbClient(){
+  if(sb) return sb;
+  if(!sbUrl()||!sbKey()) return null;
+  await loadScript(LIB.sb);
+  sb=supabase.createClient(sbUrl(),sbKey(),{auth:{persistSession:true,autoRefreshToken:true,storageKey:'mp-sb-auth'}});
+  const {data}=await sb.auth.getSession();sbUser=data.session?.user||null;
+  sb.auth.onAuthStateChange((_e,s)=>{sbUser=s?.user||null;syncStatus()});
+  return sb;
+}
+const server=()=>!!sbUser;   // connecté au cloud
 const keep=()=>!server()||LS.get('mp-keep','1')==='1';
+const fpath=(d,f)=>`${sbUser.id}/${d.id}/${f.id}`;
+const store=()=>sb.storage.from('papiers');
 async function getBlob(d,f){
   if(f.blob) return f.blob;
-  return await (await api(`/api/files/${encodeURIComponent(d.id)}/${encodeURIComponent(f.id)}`,{timeout:180000})).blob();
+  if(!sbUser) throw new Error('non connecté');
+  const {data,error}=await store().download(fpath(d,f));
+  if(error) throw new Error(error.message||'lecture impossible');
+  return data;
 }
 const delQueue=()=>{try{return JSON.parse(LS.get('mp-del','[]'))}catch(e){return[]}};
 const setDelQueue=q=>LS.set('mp-del',JSON.stringify(q));
@@ -679,51 +872,58 @@ function syncSoon(){clearTimeout(syncTimer);syncTimer=setTimeout(sync,400)}
 function syncStatus(){
   const box=$('#syncBox'),s=$('#syncStat');if(!box)return;
   const wait=DOCS.filter(d=>d._sync!=='ok').length+delQueue().length;
-  box.className='sync'+(!server()?'':syncErr?' wait':wait?' wait':' ok');
-  if(!server()) s.textContent='🖥️ PC non configuré';
-  else if(syncing) s.textContent='🔄 Envoi vers le PC…';
-  else if(syncErr) s.textContent=`⏳ PC injoignable${wait?` · ${wait} en attente`:''}`;
+  box.className='sync'+(!server()?(sbUrl()?' wait':''):syncErr?' wait':wait?' wait':' ok');
+  if(!sbUrl()) s.textContent='☁️ Cloud non configuré';
+  else if(!server()) s.textContent='🔑 Connecte-toi au cloud';
+  else if(syncing) s.textContent='🔄 Envoi dans le cloud…';
+  else if(syncErr) s.innerHTML=`⏳ Cloud injoignable${wait?` · ${wait} en attente`:''}<br><small style="opacity:.7">${esc(syncErr)}</small>`;
   else if(wait) s.textContent=`⏳ ${wait} en attente`;
-  else s.textContent='✅ PC à jour'+(lastSync?' · '+lastSync.toTimeString().slice(0,5):'');
+  else s.textContent='✅ Cloud à jour'+(lastSync?' · '+lastSync.toTimeString().slice(0,5):'');
 }
-async function api(path,opt={}){
-  const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),opt.timeout||20000);
-  try{const r=await fetch(server()+path,{...opt,signal:ctl.signal});if(!r.ok)throw new Error('PC : erreur '+r.status);return r}
-  finally{clearTimeout(t)}
-}
+function chk(res,etape){if(res&&res.error){const e=new Error(res.error.message||String(res.error));e._etape=etape;throw e}return res}
 async function sync(){
-  if(!server()){syncStatus();return}
+  if(!sbUser){syncStatus();return}
   if(syncing){syncAgain=true;return}
   syncing=true;syncErr='';syncStatus();
+  const uid=sbUser.id;
   try{
-    await api('/api/ping',{timeout:6000});
     // 1. suppressions
-    for(const id of delQueue()){await api('/api/docs/'+encodeURIComponent(id),{method:'DELETE'});setDelQueue(delQueue().filter(x=>x!==id))}
+    for(const id of delQueue()){
+      chk(await sb.from('docs').update({supprime:true,data:{},modifie:new Date().toISOString()}).eq('id',id),'suppression');
+      const {data:l}=await store().list(`${uid}/${id}`);
+      if(l&&l.length) chk(await store().remove(l.map(o=>`${uid}/${id}/${o.name}`)),'suppression fichiers');
+      setDelQueue(delQueue().filter(x=>x!==id));
+    }
     // 2. envoi des documents nouveaux / modifiés
     for(const d of DOCS.filter(x=>x._sync!=='ok')){
-      const meta={...d,categorieNom:CAT[d.categorie]?.nom,fichiers:(d.fichiers||[]).map(f=>({id:f.id,nom:f.nom,type:f.type,taille:f.taille}))};
-      delete meta._sync;delete meta._vuPc;
-      const r=await (await api('/api/docs/'+encodeURIComponent(d.id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(meta)})).json();
-      for(const fid of r.manquants||[]){
-        const f=d.fichiers.find(x=>x.id===fid);if(!f||!f.blob)continue;
-        await api(`/api/files/${encodeURIComponent(d.id)}/${encodeURIComponent(fid)}`,{method:'PUT',headers:{'Content-Type':'application/octet-stream'},body:f.blob,timeout:180000});
+      for(const f of d.fichiers||[]){
+        if(!f.blob||f.up) continue;
+        chk(await store().upload(fpath(d,f),await f.blob.arrayBuffer(),{upsert:true,contentType:f.type||'application/octet-stream'}),'envoi fichier');
+        f.up=true;
       }
+      const meta={...d,fichiers:(d.fichiers||[]).map(f=>({id:f.id,nom:f.nom,type:f.type,taille:f.taille}))};
+      delete meta._sync;delete meta._vuPc;delete meta._remote;
+      chk(await sb.from('docs').upsert({id:d.id,user_id:uid,data:meta,modifie:d.modifie||new Date().toISOString(),supprime:false}),'envoi fiche');
+      const {data:l}=await store().list(`${uid}/${d.id}`);
+      const extra=(l||[]).filter(o=>!(d.fichiers||[]).some(f=>f.id===o.name));
+      if(extra.length) await store().remove(extra.map(o=>`${uid}/${d.id}/${o.name}`));
       d._sync='ok';d._vuPc=true;
       if(keep()) await dbPut(d);
       else{await dbDel(d.id);d._remote=true;d.fichiers=(d.fichiers||[]).map(({blob,...x})=>x)}
       syncStatus();
     }
     // 3. réception de ce qui a été ajouté ailleurs (autre appareil)
-    const {docs:remote,supprimes}=await (await api('/api/docs')).json();
+    const {data:rows}=chk(await sb.from('docs').select('id,data,modifie,supprime').range(0,19999),'lecture');
+    const remote=rows.filter(r=>!r.supprime).map(r=>({...r.data,id:r.id}));
+    const supprimes=Object.fromEntries(rows.filter(r=>r.supprime).map(r=>[r.id,new Date(r.modifie).toISOString()]));
     let changed=false;
     if(!keep()){
-      // appareil « sans copie » : la liste vient du PC, rien n'est enregistré ici
       const pend=DOCS.filter(x=>x._sync!=='ok');
-      DOCS=pend.concat(remote.filter(r=>!pend.some(p=>p.id===r.id)).map(r=>{const d={...r,_sync:'ok',_vuPc:true,_remote:true};delete d.categorieNom;return d}));
+      DOCS=pend.concat(remote.filter(r=>!pend.some(p=>p.id===r.id)).map(r=>({...r,_sync:'ok',_vuPc:true,_remote:true})));
       lastSync=new Date();render();if(detId&&DOCS.some(x=>x.id===detId))openDet(detId);
       throw 'fini';
     }
-    for(const [id,when] of Object.entries(supprimes||{})){
+    for(const [id,when] of Object.entries(supprimes)){
       const l=DOCS.find(x=>x.id===id);
       if(l&&(l._sync==='ok'||(l.modifie||'')<when)){await dbDel(id);DOCS=DOCS.filter(x=>x.id!==id);changed=true}
     }
@@ -734,42 +934,69 @@ async function sync(){
       const files=[];
       for(const f of r.fichiers||[]){
         const old=l?.fichiers?.find(x=>x.id===f.id);
-        const blob=old?.blob||await (await api(`/api/files/${encodeURIComponent(r.id)}/${encodeURIComponent(f.id)}`,{timeout:180000})).blob();
-        files.push({...f,blob});
+        files.push({...f,up:true,blob:old?.blob||await getBlob(r,f)});
       }
-      const d={...r,fichiers:files,_sync:'ok',_vuPc:true};delete d.categorieNom;
+      const d={...r,fichiers:files,_sync:'ok',_vuPc:true};
       await dbPut(d);const i=DOCS.findIndex(x=>x.id===d.id);if(i>=0)DOCS[i]=d;else DOCS.push(d);changed=true;
     }
     lastSync=new Date();
     if(changed){render();if(detId)openDet(detId)}
-  }catch(e){if(e!=='fini')syncErr=e.name==='AbortError'?'délai dépassé':e.message;}
+  }catch(e){if(e!=='fini')syncErr=(e.name==='TypeError'?'pas de connexion internet':(e.message||String(e)))+(e._etape?' ('+e._etape+')':'');}
   syncing=false;syncStatus();
   if(syncAgain){syncAgain=false;syncSoon()}
 }
 const _render=render;render=function(){_render();syncStatus()};
-$('#bPc').onclick=()=>{
-  $('#pcUrl').value=server();$('#pcTest').textContent='';
-  const local=/^https?:$/.test(location.protocol)&&!/github\.io$/.test(location.hostname);
-  $('#pcNoKeep').checked=server()?LS.get('mp-keep','1')!=='1':!local&&/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-  show('#ovPc');
-};
-async function testPc(url){
-  url=url.trim().replace(/\/+$/,'');if(!url)return null;
-  if(!/^https?:\/\//.test(url))url='https://'+url;
-  try{const r=await fetch(url+'/api/ping');const j=await r.json();if(j.app!=='mes-papiers-serveur')throw 0;return {url,dossier:j.dossier}}catch(e){return false}
+function cloudForm(){
+  const baked=!!SB_CONF.url&&!LS.get('mp-sb-url','');
+  $('#cfgBox').style.display=baked?'none':'grid';
+  $('#sbUrl').value=sbUrl();$('#sbKey').value=sbKey();
+  $('#loginBox').style.display=sbUser?'none':'grid';
+  $('#userBox').innerHTML=sbUser?`✅ Connecté : <b>${esc(sbUser.email||'')}</b>`:'';
+  $('#sbSignup').style.display=sbUser?'none':'';
+  $('#sbOut').style.display=sbUser?'':'none';
+  $('#pcOk').textContent=sbUser?'Enregistrer':'Se connecter';
+  const k=LS.get('mp-keep',null);
+  $('#pcNoKeep').checked=k!=null?k!=='1':/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
 }
-$('#pcTry').onclick=async()=>{
-  $('#pcTest').textContent='Test en cours…';
-  const r=await testPc($('#pcUrl').value);
-  $('#pcTest').innerHTML=r===null?'Aucune adresse saisie.':r?`✅ PC trouvé. Les documents iront dans <b>${esc(r.dossier)}</b>`:'❌ PC injoignable. Vérifie que « Lancer Mes Papiers » tourne sur le PC et que Tailscale est actif sur les deux appareils.';
-};
-$('#pcOk').onclick=async()=>{
-  const v=$('#pcUrl').value.trim();
-  if(!v){LS.set('mp-server','');hide('#ovPc');syncStatus();return}
-  const r=await testPc(v);
+$('#bPc').onclick=()=>{$('#pcTest').textContent='';$('#sbPass').value='';cloudForm();show('#ovPc')};
+const FR_ERR=m=>/invalid login/i.test(m)?'E-mail ou mot de passe incorrect.':/not confirmed/i.test(m)?'E-mail pas encore confirmé : clique d\'abord sur le lien reçu par mail.':/already registered|already been registered/i.test(m)?'Ce compte existe déjà : utilise « Se connecter ».':/password should be|at least/i.test(m)?'Mot de passe trop court (6 caractères minimum).':/signups not allowed|signup is disabled/i.test(m)?'La création de compte est fermée sur ce projet.':/Failed to fetch|NetworkError|Load failed/i.test(m)?'Projet Supabase injoignable : vérifie l\'adresse et ta connexion.':/Invalid API key|No API key/i.test(m)?'Clé publique incorrecte.':m;
+async function prepCloud(){
+  if($('#cfgBox').style.display!=='none'){
+    const u=$('#sbUrl').value.trim().replace(/\/+$/,''),k=$('#sbKey').value.trim();
+    if(!/^https?:\/\/.+/.test(u)||!k) throw new Error('Renseigne l\'adresse du projet et la clé publique.');
+    if(u!==sbUrl()||k!==sbKey()){sb=null;sbUser=null}
+    LS.set('mp-sb-url',u);LS.set('mp-sb-key',k);
+  }
   LS.set('mp-keep',$('#pcNoKeep').checked?'0':'1');
-  LS.set('mp-server',r?r.url:(/^https?:\/\//.test(v)?v:'https://'+v).replace(/\/+$/,''));
-  hide('#ovPc');toast(r?'PC enregistré, envoi en cours':'Adresse enregistrée (PC injoignable pour l\'instant)');sync();
+  return sbClient();
+}
+$('#pcOk').onclick=async()=>{
+  const msg=$('#pcTest');msg.textContent='…';
+  try{
+    await prepCloud();
+    if(!sbUser){
+      const {error}=await sb.auth.signInWithPassword({email:$('#sbMail').value.trim(),password:$('#sbPass').value});
+      if(error) throw error;
+      const {data}=await sb.auth.getSession();sbUser=data.session?.user||null;
+    }
+    hide('#ovPc');toast('Connecté au cloud');sync();
+  }catch(e){msg.textContent='❌ '+FR_ERR(e.message||String(e))}
+};
+$('#sbSignup').onclick=async()=>{
+  const msg=$('#pcTest');msg.textContent='…';
+  try{
+    await prepCloud();
+    const {data,error}=await sb.auth.signUp({email:$('#sbMail').value.trim(),password:$('#sbPass').value});
+    if(error) throw error;
+    if(data.session){sbUser=data.session.user;hide('#ovPc');toast('Compte créé, connecté');sync()}
+    else msg.innerHTML='📧 Compte créé. <b>Ouvre le mail de confirmation</b> envoyé par Supabase, clique sur le lien, puis reviens ici et appuie sur « Se connecter ».';
+  }catch(e){msg.textContent='❌ '+FR_ERR(e.message||String(e))}
+};
+$('#sbOut').onclick=async()=>{
+  if(DOCS.some(d=>d._sync!=='ok')&&!confirm('Des documents ne sont pas encore envoyés dans le cloud. Se déconnecter quand même ?'))return;
+  await sb.auth.signOut();sbUser=null;
+  if(LS.get('mp-keep','1')!=='1'){DOCS=DOCS.filter(d=>d._sync!=='ok')}
+  hide('#ovPc');render();toast('Déconnecté');
 };
 setInterval(()=>{if(server())sync()},60000);
 window.addEventListener('online',syncSoon);
@@ -780,11 +1007,8 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncSoon()
   try{await openDB();DOCS=await dbAll()}catch(err){$('#view').innerHTML=`<div class="empty"><b>Stockage indisponible</b>${esc(err.message)}<br>Ouvre ce fichier dans Chrome, Edge ou Firefox (pas en navigation privée).</div>`;return}
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist();
   render();
-  // ouvert depuis le serveur du PC lui-même : on se règle automatiquement dessus
-  if(!server()&&/^https?:$/.test(location.protocol)&&!/github\.io$/.test(location.hostname)){
-    try{const j=await (await fetch('/api/ping')).json();if(j.app==='mes-papiers-serveur')LS.set('mp-server',location.origin)}catch(e){}
-  }
-  sync();
+  try{await sbClient()}catch(e){}
+  syncStatus();sync();
   const lb=localStorage.getItem('mp-last-backup');
   if(DOCS.length>5&&(!lb||daysTo(lb)<-30)) setTimeout(()=>toast('Pense à faire une sauvegarde (bouton 💾 à gauche)'),1200);
 })();
