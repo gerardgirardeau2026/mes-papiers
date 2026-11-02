@@ -40,6 +40,9 @@ table{width:100%;border-collapse:collapse}
 th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle}
 th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:#fbfaf7;position:sticky;top:0;z-index:1;white-space:nowrap}
 tbody tr:hover{background:#faf8f3}
+th,td{border-right:1px solid var(--line)}
+td.ln,th.ln{width:1%;text-align:right;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:8px}
+table.nl tbody{counter-reset:ln}table.nl tbody tr{counter-increment:ln}table.nl td.ln::before{content:counter(ln)}th:last-child,td:last-child{border-right:0}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pos{color:var(--pos)}.neg{color:var(--neg)}
 .muted{color:var(--muted)}
@@ -345,7 +348,7 @@ const goA=f=>`data-go="${esc(JSON.stringify(Object.assign({compte:'',annee:'',mo
 document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g&&!e.target.closest('input,select,button:not([data-go])'))go('ops',JSON.parse(g.dataset.go))});
 const st={view:'dash',annee:new Date().getFullYear(),f:{compte:'',annee:String(new Date().getFullYear()),mois:'',rub:'',q:''},lim:300};
 const TITRES={dash:'Tableau de bord',ops:'Opérations',import:'Importer un relevé',recap:'Récap mensuel',annuel:'Récap annuel & budget',epargne:'Épargne',cheques:'Chèques',regles:'Règles de classement',rubriques:'Rubriques',reglages:'Comptes & réglages'};
-function go(v,f){if(v!=='regles')MAJ=null;st.view=v;if(f)Object.assign(st.f,f);st.lim=300;render();$('#side').classList.remove('open');window.scrollTo(0,0)}
+function go(v,f){if(v!=='regles')MAJ=null;$('#view').dataset.v='';st.view=v;if(f)Object.assign(st.f,f);st.lim=300;render();$('#side').classList.remove('open');window.scrollTo(0,0)}
 $('#nav').onclick=e=>{const b=e.target.closest('button[data-v]');if(b){MAJ=null;go(b.dataset.v)}};
 $('#bMenu').onclick=()=>$('#side').classList.toggle('open');
 function render(){
@@ -431,8 +434,8 @@ function vOps(){
     <input class="f" id="fQ" type="search" placeholder="Libellé, montant…" value="${esc(f.q)}" style="min-width:200px">
   </div>
   <p class="muted" style="margin:-4px 0 10px;font-size:13.5px">${list.length} opération${list.length>1?'s':''} · total <b class="${tot<0?'neg':'pos'}">${eur(tot)}</b>${single?` · solde actuel <b>${eur(soldeActuel(f.compte))}</b>`:''}</p>
-  ${list.length?`<div class="tw"><table class="opst"><thead><tr><th>Date</th>${f.compte?'':'<th class="hide-m">Compte</th>'}<th>Libellé</th><th class="num">Montant</th><th style="min-width:190px">Rubrique</th>${single?'<th class="num hide-m">Solde</th>':''}<th class="hide-m"></th></tr></thead>
-  <tbody>${rows.slice(0,st.lim).map(({o,s})=>`<tr data-id="${o.id}"><td class="d" style="white-space:nowrap">${fdate(o.date)}</td>${f.compte?'':`<td class="hide-m muted" style="white-space:nowrap">${esc(cNom(o.compte))}</td>`}
+  ${list.length?`<div class="tw"><table class="opst nl"><thead><tr><th class="ln hide-m">N°</th><th>Date</th>${f.compte?'':'<th class="hide-m">Compte</th>'}<th>Libellé</th><th class="num">Montant</th><th style="min-width:190px">Rubrique</th>${single?'<th class="num hide-m">Solde</th>':''}<th class="hide-m"></th></tr></thead>
+  <tbody>${rows.slice(0,st.lim).map(({o,s})=>`<tr data-id="${o.id}"><td class="ln hide-m"></td><td class="d" style="white-space:nowrap">${fdate(o.date)}</td>${f.compte?'':`<td class="hide-m muted" style="white-space:nowrap">${esc(cNom(o.compte))}</td>`}
     <td class="clic lib" data-edit="${o.id}">${esc(o.libelle)}${o.note?`<div class="muted" style="font-size:12px">${esc(o.note)}</div>`:''}</td>
     <td class="num mt ${o.montant<0?'neg':'pos'}">${eur(o.montant)}</td>
     <td class="rb"><select class="in rub ${aClasser(o)?'vide':''}" data-rub="${o.id}">${rubOptions(o.rubrique)}</select></td>
@@ -617,8 +620,8 @@ function renderImport(){
   $('#iRes').innerHTML=`
   ${IMP.tabs.length>1?`<p>Feuille : <select class="f" id="iTab">${IMP.tabs.map((t,i)=>`<option value="${i}" ${i===IMP.tab?'selected':''}>${esc(t.nom)} (${t.lines.length} lignes)</option>`).join('')}</select></p>`:''}
   <p style="margin:14px 0 8px"><b>${esc(IMP.file)}</b> · du ${fdate(L[0]?.date)} au ${fdate(L[L.length-1]?.date)} · <span class="badge b-ok">${nN} nouvelle(s)</span> <span class="badge b-grey">${nD} déjà enregistrée(s)</span> ${nC?`<span class="badge b-warn">${nC} à classer</span>`:''} ${soldeMsg}</p>
-  <div class="tw" style="max-height:60vh"><table><thead><tr><th style="width:30px"><input type="checkbox" id="iAll" ${L.every(l=>l.ok||l.dbl)?'checked':''}></th><th>Date</th><th>Libellé</th><th class="num">Montant</th><th style="min-width:200px">Rubrique</th><th>Retenir pour la suite</th></tr></thead>
-  <tbody>${L.map((l,i)=>`<tr style="${l.dbl?'opacity:.5':''}"><td><input type="checkbox" data-i="${i}" data-k="ok" ${l.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(l.date)}</td><td>${esc(l.lib)}${l.dbl?' <span class="badge b-grey">déjà là</span>':''}</td>
+  <div class="tw" style="max-height:60vh"><table><thead><tr><th class="ln">N°</th><th style="width:30px"><input type="checkbox" id="iAll" ${L.every(l=>l.ok||l.dbl)?'checked':''}></th><th>Date</th><th>Libellé</th><th class="num">Montant</th><th style="min-width:200px">Rubrique</th><th>Retenir pour la suite</th></tr></thead>
+  <tbody>${L.map((l,i)=>`<tr style="${l.dbl?'opacity:.5':''}"><td class="ln">${i+1}</td><td><input type="checkbox" data-i="${i}" data-k="ok" ${l.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(l.date)}</td><td>${esc(l.lib)}${l.dbl?' <span class="badge b-grey">déjà là</span>':''}</td>
     <td class="num ${l.mt<0?'neg':'pos'}">${eur(l.mt)}</td>
     <td><select class="in rub ${rubOf(l.rub)?'':'vide'}" data-i="${i}" data-k="rub">${rubOptions(l.rub)}</select></td>
     <td>${l.auto?'<span class="muted" style="font-size:12px">règle existante</span>':`<input class="in" data-i="${i}" data-k="motif" value="${esc(l.motif)}" placeholder="${rubOf(l.rub)?'motif à retenir':''}" ${rubOf(l.rub)?'':'disabled'}>`}</td></tr>`).join('')}</tbody></table></div>
@@ -798,7 +801,7 @@ function coherence(r,s){
 function vRegles(){
   if(MAJ)return vMaj();
   $('#tools').innerHTML=`<button class="btn" id="bClean">🧹 Nettoyer</button><button class="btn pri" id="bMaj">🔄 Mettre à jour les opérations</button>`;
-  const S=regStats(),q=norm(rgQ);
+  const S=regStats(),q=norm(rgQ),rang=new Map(REG.map((r,i)=>[r.id,i+1]));
   const all=REG.map(r=>({r,s:S.get(r.id),c:coherence(r,S.get(r.id))}));
   const nPb=all.filter(x=>x.c[2]).length,nDbl=all.filter(x=>x.s.doublon).length,nInut=all.filter(x=>x.s.couverte&&memeRub(x.s.couverte.rubrique,x.r.rubrique)).length;
   const list=all.filter(x=>(!q||x.r.m.includes(q)||norm(x.r.rubrique).includes(q))&&(!rgPb||x.c[2]));
@@ -806,8 +809,8 @@ function vRegles(){
    <p class="muted" style="font-size:13px;margin:8px 0 0">${REG.length} règles · ${nPb?`<b style="color:var(--warn)">${nPb} à revoir</b> (dont ${nDbl} doublon${nDbl>1?'s':''} et ${nInut} inutile${nInut>1?'s':''})`:'toutes cohérentes'}. La première règle qui correspond l'emporte : les plus hautes passent avant (⬆ pour remonter une règle).</p></div>
    <div class="filters"><input class="f" id="rgQ" type="search" placeholder="Chercher un motif ou une rubrique…" value="${esc(rgQ)}" style="min-width:260px">
      <label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="checkbox" id="rgPb" ${rgPb?'checked':''}> Problèmes seulement</label><span class="muted" style="font-size:13px">${list.length} affichée(s)</span></div>
-   <div class="tw" style="max-height:70vh"><table><thead><tr><th>Le libellé contient</th><th>Rubrique</th><th class="num">Opérations</th><th>Cohérence</th><th></th></tr></thead><tbody>
-   ${list.slice(0,600).map(({r,s,c})=>`<tr><td><input class="in" data-m="${r.id}" value="${esc(r.motif)}"></td><td><select class="in" data-r="${r.id}">${rubOptions(r.rubrique,false)}</select></td>
+   <div class="tw" style="max-height:70vh"><table><thead><tr><th class="ln">N°</th><th>Le libellé contient</th><th>Rubrique</th><th class="num">Opérations</th><th>Cohérence</th><th></th></tr></thead><tbody>
+   ${list.slice(0,600).map(({r,s,c})=>`<tr><td class="ln">${rang.get(r.id)}</td><td><input class="in" data-m="${r.id}" value="${esc(r.motif)}"></td><td><select class="in" data-r="${r.id}">${rubOptions(r.rubrique,false)}</select></td>
      <td class="num">${s.match?`<span class="clic" ${goA({q:r.motif})} title="Voir les opérations">${s.match}</span>`:'<span class="muted">0</span>'}</td>
      <td><span class="badge ${c[0]}">${esc(c[1])}</span></td>
      <td style="white-space:nowrap"><button class="ib" data-top="${r.id}" title="Remonter en premier">⬆</button><button class="ib" data-rdel="${r.id}" title="Supprimer">✕</button></td></tr>`).join('')}
@@ -842,8 +845,8 @@ function vMaj(){
   const ch=MAJ.ch,n=ch.filter(c=>c.ok).length,nC=ch.filter(c=>aClasser(c.o)).length;
   $('#view').innerHTML=ch.length?`<div class="box" style="margin-bottom:12px"><p style="margin:0">Si on applique les règles actuelles, <b>${ch.length} opération(s)</b> changeraient de rubrique : ${nC} « à classer » (cochées) et ${ch.length-nC} déjà classées autrement (non cochées : vérifie avant, tu les as peut-être classées à la main exprès).</p>
     <div class="filters" style="margin:10px 0 0"><button class="btn sm" id="mAll">Tout cocher</button><button class="btn sm" id="mNone">Tout décocher</button><button class="btn sm" id="mCl">Seulement les « à classer »</button><button class="btn pri" id="mGo" style="margin-left:auto" ${n?'':'disabled'}>Appliquer à ${n} opération(s)</button></div></div>
-    <div class="tw" style="max-height:66vh"><table><thead><tr><th></th><th>Date</th><th class="hide-m">Compte</th><th>Libellé</th><th class="num">Montant</th><th>Actuelle</th><th>Proposée</th></tr></thead><tbody>
-    ${ch.slice(0,MAJ.lim).map((c,i)=>`<tr><td><input type="checkbox" data-i="${i}" ${c.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(c.o.date)}</td><td class="hide-m muted">${esc(cNom(c.o.compte))}</td><td>${esc(c.o.libelle)}</td><td class="num ${c.o.montant<0?'neg':'pos'}">${eur(c.o.montant)}</td>
+    <div class="tw" style="max-height:66vh"><table><thead><tr><th class="ln">N°</th><th></th><th>Date</th><th class="hide-m">Compte</th><th>Libellé</th><th class="num">Montant</th><th>Actuelle</th><th>Proposée</th></tr></thead><tbody>
+    ${ch.slice(0,MAJ.lim).map((c,i)=>`<tr><td class="ln">${i+1}</td><td><input type="checkbox" data-i="${i}" ${c.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(c.o.date)}</td><td class="hide-m muted">${esc(cNom(c.o.compte))}</td><td>${esc(c.o.libelle)}</td><td class="num ${c.o.montant<0?'neg':'pos'}">${eur(c.o.montant)}</td>
       <td>${aClasser(c.o)?`<span class="badge b-warn">${esc(c.o.rubrique||'à classer')}</span>`:esc(c.o.rubrique)}</td><td><b>${esc(c.p)}</b></td></tr>`).join('')}</tbody></table></div>
     ${ch.length>MAJ.lim?`<p style="text-align:center"><button class="btn" id="mMore">Afficher plus (${ch.length-MAJ.lim})</button></p>`:''}`
     :'<div class="empty"><b>Tout est à jour</b>Toutes les opérations sont déjà classées comme le disent les règles.</div>';
@@ -985,6 +988,16 @@ async function exportTout(){
   add('Cheques',[['Compte','N°','Date','Bénéficiaire','Montant','Rubrique'],...D.cheques.map(c=>[c.compte,c.numero,c.date,c.beneficiaire,c.montant,c.rubrique])]);
   XLSX.writeFile(wb,'mes-comptes-sauvegarde-'+today()+'.xlsx');
 }
+
+/* =================== garder la position après une modification =================== */
+function garderPosition(fn){return function(...a){
+  const v=$('#view'),cle=st.view+(MAJ?'-maj':''),meme=v.dataset.v===cle;
+  const tw=v.querySelector('.tw'),t=tw?tw.scrollTop:0,y=window.scrollY;
+  fn.apply(this,a);v.dataset.v=cle;
+  if(meme){const n=v.querySelector('.tw');if(n)n.scrollTop=t;window.scrollTo(0,y)}
+}}
+vRegles=garderPosition(vRegles);vMaj=garderPosition(vMaj);vOps=garderPosition(vOps);vRubriques=garderPosition(vRubriques);
+vCheques=garderPosition(vCheques);vEpargne=garderPosition(vEpargne);vReglages=garderPosition(vReglages);vAnnuel=garderPosition(vAnnuel);
 
 /* =================== démarrage =================== */
 async function start(){
