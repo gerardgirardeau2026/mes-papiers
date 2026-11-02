@@ -44,11 +44,13 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .pos{color:var(--pos)}.neg{color:var(--neg)}
 .muted{color:var(--muted)}
 .clic{cursor:pointer}.clic:hover{text-decoration:underline}
-table.recap td,table.recap th{padding:5px 8px;font-size:12.5px}
+table.recap td,table.recap th{padding:5px 8px;font-size:12.5px;border-right:1px solid var(--line)}
+table.recap td:last-child,table.recap th:last-child{border-right:0}
+table.recap td:first-child,table.recap th:first-child{border-right:2px solid #d6d1c4}
 table.recap td:first-child,table.recap th:first-child{position:sticky;left:0;background:#fff;z-index:2;white-space:nowrap}
 table.recap th:first-child{background:#fbfaf7;z-index:3}
 table.recap tr.tot td{font-weight:700;background:#f3f1ec}
-table.recap tr.sec td{background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:12px;text-transform:uppercase}
+table.recap tr.sec td{border-right:0!important;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:12px;text-transform:uppercase}
 table.recap tr.sol td{background:#fbfaf7;color:var(--muted)}
 td input.in,td select.in{border:1px solid transparent;background:transparent;border-radius:6px;padding:3px 5px;width:100%;font-size:13px}
 td input.in:hover,td select.in:hover{border-color:var(--line)}
@@ -902,9 +904,9 @@ async function importGGI(file){
     for(let i=0;i<epU.length;i+=500)chk(await sb.from('cpt_epargne').upsert(epU.slice(i,i+500),{onConflict:'user_id,annee,support,mois'}),'épargne');bar(.22);
     if(chq.length)await insertBatch('cpt_cheques',chq);
     await insertBatch('cpt_operations',ops,(a,b)=>{bar(.25+.73*a/b);msg(`Envoi des opérations : ${a} / ${b}…`)});
-    msg('Rechargement…');await loadAll();bar(1);
+    msg('Rechargement…');await loadAll();vReglages();
     const nC=D.ops.filter(aClasser).length;
-    msg(`✅ Classeur repris : ${D.comptes.length} comptes, ${D.ops.length} opérations, ${D.regles.length} règles, ${D.rubs.length} rubriques.${nC?` <a href="#" ${goA({rub:'__classer'})}>${nC} opération(s) à classer</a>.`:''}`);
+    $('#xProg').style.display='none';msg(`✅ Classeur repris : ${D.comptes.length} comptes, ${D.ops.length} opérations, ${D.regles.length} règles, ${D.rubs.length} rubriques.${nC?` <a href="#" ${goA({rub:'__classer'})}>${nC} opération(s) à classer</a>.`:''}`);
     toast('Classeur Excel repris');
   }catch(e){msg('❌ '+esc(e.message)+(e.etape?' ('+esc(e.etape)+')':''));}
 }
