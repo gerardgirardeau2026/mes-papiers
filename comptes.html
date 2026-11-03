@@ -59,6 +59,7 @@ table.recap tr.tot td{font-weight:700;background:var(--tot)}
 table.recap tr.sec td{background:var(--th-bg);color:var(--th-fg);letter-spacing:.04em;font-weight:700;font-size:12px;text-transform:uppercase}
 table.recap tr.sec td:last-child{border-right:0}
 table.recap tbody tr.sec td{border-top:5px solid var(--bg)}
+table.recap tr.tot>td,table.recap tr.sol:has(+tr.sec)>td{box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--th-fg) 55%,transparent)}
 .tw:has(>table.recap){border:0;box-shadow:none;background:transparent;border-radius:0}
 table.recap td{background:var(--panel)}
 table.recap tr>:first-child{border-left:1px solid var(--line)}
