@@ -806,7 +806,11 @@ function vImport(){
     <p class="muted" style="margin:0 0 10px;font-size:13.5px">Choisis le dossier où tu ranges tes relevés téléchargés (Excel ou CSV avec une colonne Solde). Pour chaque jour, je compare le solde de la banque avec celui de l'appli et je te montre où un écart apparaît. Rien n'est modifié.</p>
     <button class="btn pri" id="vDir">📁 Choisir un dossier</button> <button class="btn" id="vFic">📄 Choisir des fichiers</button>
     <input type="file" id="vDirIn" webkitdirectory multiple hidden><input type="file" id="vFicIn" accept=".xlsx,.xls,.csv,.txt" multiple hidden>
-    <div id="vRes"></div></div>`;
+    <div id="vRes"></div></div>
+  <div class="box" style="margin-top:16px"><h3 style="margin:0 0 6px">↩ Derniers imports</h3>
+    <p class="muted" style="margin:0 0 10px;font-size:13.5px">Chaque enregistrement fait depuis « Importer un relevé ». Tu peux en annuler un : ses opérations sont supprimées, le reste ne bouge pas.</p>
+    <div id="hImp">${histoImportsHTML()}</div></div>`;
+  bindHisto();
   $('#vDir').onclick=()=>$('#vDirIn').click();$('#vFic').onclick=()=>$('#vFicIn').click();
   $('#vDirIn').onchange=e=>{verifSoldes([...e.target.files]);e.target.value=''};
   $('#vFicIn').onchange=e=>{verifSoldes([...e.target.files]);e.target.value=''};
@@ -817,6 +821,34 @@ function vImport(){
   ['dragleave','drop'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.remove('hot')}));
   dr.addEventListener('drop',e=>{if(e.dataTransfer.files[0])chargeReleve(e.dataTransfer.files[0])});
   if(IMP)renderImport();
+}
+/* ---- historique des imports (regroupés par compte et heure d'enregistrement) ---- */
+var LOT_GAP=120000,REPRISE_MS=600000;
+function lotsImport(){
+  const ops=D.ops.filter(o=>o.cree).slice().sort((a,b)=>a.cree<b.cree?-1:1),lots=[];
+  for(const o of ops){const t=Date.parse(o.cree),l=lots.find(l=>l.compte===o.compte&&t-l.fin<LOT_GAP&&t>=l.debut);
+    if(l){l.ops.push(o);l.fin=t}else lots.push({compte:o.compte,debut:t,fin:t,ops:[o]})}
+  const t0=lots.reduce((m,l)=>Math.min(m,l.debut),Infinity);lots.forEach(l=>l.reprise=l.debut-t0<=REPRISE_MS);
+  return lots.sort((a,b)=>b.fin-a.fin);
+}
+function histoImportsHTML(){
+  const lots=lotsImport().slice(0,12);if(!lots.length)return '<p class="muted">Aucun import.</p>';
+  return `<div class="tw"><table><thead><tr><th>Enregistré le</th><th>Compte</th><th class="num">Opérations</th><th>Période</th><th class="num">Total</th><th></th></tr></thead><tbody>${lots.map((l,i)=>{
+    const ds=l.ops.map(o=>o.date).sort(),tot=l.ops.reduce((s,o)=>s+o.montant,0),gros=l.reprise;
+    return `<tr><td style="white-space:nowrap">${new Date(l.fin).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'})}</td><td>${esc(cNom(l.compte))}</td><td class="num">${l.ops.length}</td>
+    <td style="white-space:nowrap">${fdate(ds[0])} → ${fdate(ds[ds.length-1])}</td><td class="num ${tot<0?'neg':'pos'}">${eur(tot)}</td>
+    <td>${gros?'<span class="muted" style="font-size:12px">reprise du classeur Excel</span>':`<button class="btn" data-annul="${i}" style="border-color:var(--danger);color:var(--danger)">↩ Annuler cet import</button>`}</td></tr>`}).join('')}</tbody></table></div>`;
+}
+function bindHisto(){
+  const lots=lotsImport().slice(0,12);
+  document.querySelectorAll('#hImp [data-annul]').forEach(b=>b.onclick=async()=>{
+    const l=lots[+b.dataset.annul],ids=l.ops.map(o=>o.id);
+    if(!confirm(`Annuler cet import ?\n\n${ids.length} opération(s) du compte ${cNom(l.compte)} vont être supprimées.`))return;
+    b.disabled=true;b.textContent='Suppression…';
+    try{for(let i=0;i<ids.length;i+=100)chk(await T('cpt_operations').delete().in('id',ids.slice(i,i+100)),'suppression')}catch(e){toast('Erreur : '+e.message);b.disabled=false;return}
+    const set=new Set(ids);D.ops=D.ops.filter(o=>!set.has(o.id));index();$('#hImp').innerHTML=histoImportsHTML();bindHisto();
+    toast(`Import annulé : ${ids.length} opération(s) supprimée(s). Solde ${cNom(l.compte)} : ${eur(soldeActuel(l.compte))}`);
+  });
 }
 /* ---- vérification des soldes avec les relevés ---- */
 async function verifSoldes(files){
