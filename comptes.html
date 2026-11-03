@@ -58,7 +58,7 @@ table.recap th:first-child{background:var(--th-bg);z-index:3}
 table.recap tr.tot td{font-weight:700;background:var(--tot)}
 table.recap tr.sec td{background:var(--th-bg);color:var(--th-fg);letter-spacing:.04em;font-weight:700;font-size:12px;text-transform:uppercase}
 table.recap tr.sec td:last-child{border-right:0}
-table.recap tbody tr.sec td{border-top:5px solid var(--panel)}
+table.recap tbody tr.sec td{border-top:5px solid var(--bg)}
 table.recap tbody tr.sec:first-child td{border-top:0}
 table.recap .dop{font-size:11.5px;color:var(--accent);font-weight:600}
 table.recap tr.sol td{background:var(--sol);color:var(--muted)}
@@ -793,7 +793,7 @@ async function chargeReleve(file){
   if(!tabs.length){$('#iRes').innerHTML='<p class="neg">Je ne trouve pas de tableau d\'opérations (colonnes Date, Libellé, Débit/Crédit ou Montant) dans ce fichier.</p>';return}
   // compte deviné d'après le nom du fichier
   const c=$('#iC').value;
-  IMP={file:file.name,tabs,tab:0,compte:c};prepImport();
+  IMP={file:file.name,tabs,tab:0,compte:c,f:{q:'',etat:'',rub:'',an:'',mois:''}};prepImport();
 }
 function prepImport(){
   const lines=IMP.tabs[IMP.tab].lines.slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
@@ -812,7 +812,20 @@ function renderImport(){
   const oldTw=document.querySelector('#iRes .tw'),oldT=oldTw?oldTw.scrollTop:0,y=window.scrollY;
   renderImport0();const nt=document.querySelector('#iRes .tw');if(nt)nt.scrollTop=oldT;window.scrollTo(0,y);
 }
+function impVisible(l){
+  const f=IMP.f||{};
+  if(f.q){const q=norm(f.q);if(!norm(l.lib).includes(q)&&!norm(rubOf(l.rub)?.nom||'').includes(q)&&!String(l.mt).replace('.',',').includes(f.q.trim()))return false}
+  switch(f.etat){case 'nouv':if(l.dbl)return false;break;case 'dbl':if(!l.dbl)return false;break;
+    case 'classer':if(rubOf(l.rub))return false;break;case 'classe':if(!rubOf(l.rub))return false;break;
+    case 'rec':if(l.mt<0)return false;break;case 'dep':if(l.mt>=0)return false;break;
+    case 'coch':if(!l.ok)return false;break;case 'noncoch':if(l.ok)return false;break}
+  if(f.rub&&(rubOf(l.rub)?.nom||'')!==f.rub)return false;
+  if(f.an&&l.date.slice(0,4)!==f.an)return false;
+  if(f.mois&&l.date.slice(5,7)!==f.mois)return false;
+  return true;
+}
 function renderImport0(){
+  IMP.f=IMP.f||{q:'',etat:'',rub:'',an:'',mois:''};const F=IMP.f;
   const L=IMP.lines,nN=L.filter(l=>!l.dbl).length,nD=L.length-nN,nC=L.filter(l=>l.ok&&!rubOf(l.rub)).length;
   const c=compte(IMP.compte),last=[...L].reverse().find(l=>l.solde!=null);
   let soldeMsg='';
@@ -824,15 +837,33 @@ function renderImport0(){
   $('#iRes').innerHTML=`
   ${IMP.tabs.length>1?`<p>Feuille : <select class="f" id="iTab">${IMP.tabs.map((t,i)=>`<option value="${i}" ${i===IMP.tab?'selected':''}>${esc(t.nom)} (${t.lines.length} lignes)</option>`).join('')}</select></p>`:''}
   <p style="margin:14px 0 8px"><b>${esc(IMP.file)}</b> · du ${fdate(L[0]?.date)} au ${fdate(L[L.length-1]?.date)} · <span class="badge b-ok">${nN} nouvelle(s)</span> <span class="badge b-grey">${nD} déjà enregistrée(s)</span> ${nC?`<span class="badge b-warn">${nC} à classer</span>`:''} ${soldeMsg}</p>
-  <div class="tw" style="max-height:60vh"><table><thead><tr><th class="ln">N°</th><th style="width:30px"><input type="checkbox" id="iAll" ${L.every(l=>l.ok||l.dbl)?'checked':''}></th><th>Date</th><th>Libellé</th><th class="num">Montant</th><th style="min-width:200px">Rubrique</th><th>Retenir pour la suite</th></tr></thead>
-  <tbody>${L.map((l,i)=>`<tr style="${l.dbl?'opacity:.5':''}"><td class="ln">${i+1}</td><td><input type="checkbox" data-i="${i}" data-k="ok" ${l.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(l.date)}</td><td>${esc(l.lib)}${l.dbl?' <span class="badge b-grey">déjà là</span>':''}</td>
+  ${(()=>{const rubs=[...new Set(L.map(l=>rubOf(l.rub)?.nom).filter(Boolean))].sort();const ans=[...new Set(L.map(l=>l.date.slice(0,4)))].sort(),vis=L.filter(impVisible).length,filt=F.q||F.etat||F.rub||F.an||F.mois;
+   return `<div class="filters" style="margin:0 0 8px;flex-wrap:wrap;gap:8px;align-items:center">
+    <input class="f" id="iQ" placeholder="🔍 Rechercher (libellé, rubrique, montant)" value="${esc(F.q)}" style="min-width:260px">
+    <select class="f" id="iEtat">${[['','Toutes les lignes'],['nouv','Nouvelles'],['dbl','Déjà enregistrées'],['classer','À classer'],['classe','Classées'],['rec','Recettes (+)'],['dep','Dépenses (−)'],['coch','Cochées'],['noncoch','Non cochées']].map(([v,t])=>`<option value="${v}" ${F.etat===v?'selected':''}>${t}</option>`).join('')}</select>
+    <select class="f" id="iAn"><option value="">Toutes les années</option>${ans.map(a=>`<option ${F.an===a?'selected':''}>${a}</option>`).join('')}</select>
+    <select class="f" id="iMois"><option value="">Tous les mois</option>${MOIS.map((m,i)=>{const v=String(i+1).padStart(2,'0');return `<option value="${v}" ${F.mois===v?'selected':''}>${m}</option>`}).join('')}</select>
+    <select class="f" id="iRub"><option value="">Toutes les rubriques</option>${rubs.map(r=>`<option ${F.rub===r?'selected':''}>${esc(r)}</option>`).join('')}</select>
+    ${(()=>{const per=F.mois?MOIS[+F.mois-1].toLowerCase()+(F.an?' '+F.an:''):F.an?F.an:'';const lab=per?(F.mois?'le mois de '+per:"l'année "+per):(filt?'les lignes affichées':'tout');
+      return `<button class="btn" id="iDecoche" title="Décoche ${lab}">☐ Décocher ${lab}</button><button class="btn" id="iCoche" title="Coche ${lab}">☑ Cocher ${lab}</button>`})()}
+    ${filt?`<span class="muted" style="font-size:13px">${vis} ligne(s) affichée(s) sur ${L.length}</span> <button class="btn" id="iRaz">✕ Effacer les filtres</button>`:''}</div>`})()}
+  <div class="tw" style="max-height:60vh"><table><thead><tr><th class="ln">N°</th><th style="width:30px"><input type="checkbox" id="iAll" title="Cocher / décocher les lignes affichées" ${L.filter(impVisible).every(l=>l.ok||l.dbl)?'checked':''}></th><th>Date</th><th>Libellé</th><th class="num">Montant</th><th style="min-width:200px">Rubrique</th><th>Retenir pour la suite</th></tr></thead>
+  <tbody>${L.map((l,i)=>!impVisible(l)?'':`<tr style="${l.dbl?'opacity:.5':''}"><td class="ln">${i+1}</td><td><input type="checkbox" data-i="${i}" data-k="ok" ${l.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(l.date)}</td><td>${esc(l.lib)}${l.dbl?' <span class="badge b-grey">déjà là</span>':''}</td>
     <td class="num ${l.mt<0?'neg':'pos'}">${eur(l.mt)}</td>
     <td>${rubBtn(l.rub,`data-ib="${i}"`)}</td>
     <td>${l.auto?'<span class="muted" style="font-size:12px">règle existante</span>':`<input class="in" data-i="${i}" data-k="motif" value="${esc(l.motif)}" placeholder="${rubOf(l.rub)?'motif à retenir':''}" ${rubOf(l.rub)?'':'disabled'}>`}</td></tr>`).join('')}</tbody></table></div>
   <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;align-items:center"><span class="muted" style="font-size:13px;margin-right:auto">Astuce : quand tu choisis une rubrique, les autres lignes au même libellé suivent, et le « motif » sera retenu pour les prochains relevés.</span>
-  <button class="btn" id="iCancel">Annuler</button><button class="btn pri" id="iSave" ${L.some(l=>l.ok)?'':'disabled'}>Enregistrer ${L.filter(l=>l.ok).length} opération(s)</button></div>`;
+  <button class="btn" id="iCancel">Annuler</button><button class="btn pri" id="iSave" ${L.some(l=>l.ok)?'':'disabled'}>Enregistrer ${L.filter(l=>l.ok).length} opération(s)${(()=>{const h=L.filter(l=>l.ok&&!impVisible(l)).length;return h?` (dont ${h} hors filtre)`:''})()}</button></div>`;
   if($('#iTab'))$('#iTab').onchange=e=>{IMP.tab=+e.target.value;prepImport()};
-  $('#iAll').onchange=e=>{L.forEach(l=>{if(!l.dbl)l.ok=e.target.checked});renderImport()};
+  $('#iAll').onchange=e=>{L.forEach(l=>{if(!l.dbl&&impVisible(l))l.ok=e.target.checked});renderImport()};
+  $('#iQ').oninput=e=>{F.q=e.target.value;const pos=e.target.selectionStart;renderImport();const q=$('#iQ');q.focus();q.setSelectionRange(pos,pos)};
+  $('#iEtat').onchange=e=>{F.etat=e.target.value;renderImport()};
+  $('#iRub').onchange=e=>{F.rub=e.target.value;renderImport()};
+  $('#iDecoche').onclick=()=>{L.forEach(l=>{if(impVisible(l))l.ok=false});renderImport()};
+  $('#iCoche').onclick=()=>{L.forEach(l=>{if(!l.dbl&&impVisible(l))l.ok=true});renderImport()};
+  $('#iAn').onchange=e=>{F.an=e.target.value;renderImport()};
+  $('#iMois').onchange=e=>{F.mois=e.target.value;renderImport()};
+  if($('#iRaz'))$('#iRaz').onclick=()=>{IMP.f={q:'',etat:'',rub:'',an:'',mois:''};renderImport()};
   $('#iCancel').onclick=()=>{IMP=null;vImport()};
   const setRub=(l,v)=>{l.rub=v;l.auto=false;
       if(rubOf(l.rub)){l.motif=l.motif||suggestMotif(l.lib);const m=norm(l.motif);if(m)L.forEach(x=>{if(x!==l&&!rubOf(x.rub)&&norm(x.lib).includes(m)){x.rub=l.rub;x.auto=true}})}
