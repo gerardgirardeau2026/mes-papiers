@@ -786,7 +786,15 @@ function vImport(){
     <div class="filters" style="margin:0 0 12px"><label>Compte : <select class="f" id="iC">${D.comptes.map(c=>`<option value="${c.id}" ${IMP?.compte===c.id?'selected':''}>${esc(c.nom)}</option>`).join('')}</select></label></div>
     <div class="drop" id="iDrop">📥 Dépose ici le relevé téléchargé sur le site de ta banque<br><span style="font-size:13px">Crédit Mutuel (.xlsx), Banque Populaire (.csv), ou tout fichier Excel/CSV avec Date, Libellé, Débit/Crédit ou Montant</span>
       <input type="file" id="iFile" accept=".xlsx,.xls,.csv,.txt" hidden></div>
-    <div id="iRes"></div></div>`;
+    <div id="iRes"></div></div>
+  <div class="box" style="margin-top:16px"><h3 style="margin:0 0 6px">🔍 Vérifier les soldes avec mes relevés de banque</h3>
+    <p class="muted" style="margin:0 0 10px;font-size:13.5px">Choisis le dossier où tu ranges tes relevés téléchargés (Excel ou CSV avec une colonne Solde). Pour chaque jour, je compare le solde de la banque avec celui de l'appli et je te montre où un écart apparaît. Rien n'est modifié.</p>
+    <button class="btn pri" id="vDir">📁 Choisir un dossier</button> <button class="btn" id="vFic">📄 Choisir des fichiers</button>
+    <input type="file" id="vDirIn" webkitdirectory multiple hidden><input type="file" id="vFicIn" accept=".xlsx,.xls,.csv,.txt" multiple hidden>
+    <div id="vRes"></div></div>`;
+  $('#vDir').onclick=()=>$('#vDirIn').click();$('#vFic').onclick=()=>$('#vFicIn').click();
+  $('#vDirIn').onchange=e=>{verifSoldes([...e.target.files]);e.target.value=''};
+  $('#vFicIn').onchange=e=>{verifSoldes([...e.target.files]);e.target.value=''};
   $('#iC').onchange=e=>{if(IMP){IMP.compte=e.target.value;prepImport()}};
   const dr=$('#iDrop');dr.onclick=()=>$('#iFile').click();
   $('#iFile').onchange=e=>{if(e.target.files[0])chargeReleve(e.target.files[0]);e.target.value=''};
@@ -794,6 +802,55 @@ function vImport(){
   ['dragleave','drop'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.remove('hot')}));
   dr.addEventListener('drop',e=>{if(e.dataTransfer.files[0])chargeReleve(e.dataTransfer.files[0])});
   if(IMP)renderImport();
+}
+/* ---- vérification des soldes avec les relevés ---- */
+async function verifSoldes(files){
+  files=files.filter(f=>/\.(xlsx|xls|csv|txt)$/i.test(f.name)&&!f.name.startsWith('~$')).sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name));
+  const out=$('#vRes');
+  if(!files.length){out.innerHTML='<p class="neg">Aucun fichier Excel ou CSV dans ce choix. (Les relevés PDF ne sont pas lus ici.)</p>';return}
+  const res=[];let n=0;
+  for(const f of files){
+    out.innerHTML=`<p class="muted">Lecture ${++n}/${files.length} : ${esc(f.name)}…</p>`;
+    let tabs;try{tabs=await lireFichier(f)}catch(e){res.push({f:f.name,err:'illisible'});continue}
+    if(!tabs.length){res.push({f:f.name,err:"pas de tableau d'opérations"});continue}
+    for(const t of tabs)res.push(verifUn(f.name+(tabs.length>1?' · '+t.nom:''),t.lines));
+  }
+  const ok=res.filter(r=>r.etat==='ok').length,ko=res.filter(r=>r.etat==='ko').length;
+  out.innerHTML=`<p style="margin:14px 0 8px"><b>${res.length} relevé(s)</b> · <span class="badge b-ok">${ok} juste(s)</span> ${ko?`<span class="badge b-warn">${ko} avec écart</span>`:''} ${res.length-ok-ko?`<span class="badge b-grey">${res.length-ok-ko} non vérifiable(s)</span>`:''}</p>
+  <div class="tw"><table><thead><tr><th class="ln">N°</th><th>Fichier</th><th>Compte</th><th>Période</th><th class="num">Jours vérifiés</th><th class="num">Solde banque</th><th class="num">Solde appli</th><th class="num">Écart</th><th>Résultat</th></tr></thead><tbody>
+  ${res.map((r,i)=>`<tr><td class="ln">${i+1}</td><td>${esc(r.f)}</td><td>${r.c?esc(r.c.nom):''}</td><td style="white-space:nowrap">${r.du?fdate(r.du)+' → '+fdate(r.au):''}</td>
+    <td class="num">${r.nb??''}</td><td class="num">${r.sb!=null?eur(r.sb):''}</td><td class="num">${r.sa!=null?eur(r.sa):''}</td><td class="num ${r.etat==='ko'?'neg':''}">${r.etat?eur(r.sa-r.sb):''}</td>
+    <td>${r.etat&&r.apres?`<div class="muted" style="font-size:12px">+ ${r.apres} opération(s) après le ${fdate(r.au)}, pas encore importée(s)</div>`:''}${r.etat==='ok'?'<span class="badge b-ok">✓ identique</span>':r.etat==='ko'?`<span class="badge b-warn">⚠ écart depuis le ${fdate(r.det[0].date)}</span>`:`<span class="muted">${esc(r.err)}</span>`}</td></tr>`).join('')}</tbody></table></div>
+  ${res.filter(r=>r.etat==='ko').map(r=>`<div class="box" style="margin-top:12px;box-shadow:none"><b>${esc(r.f)}</b> · ${esc(r.c.nom)}
+    ${r.det.slice(0,8).map(d=>`<p style="margin:10px 0 4px">${d.date===r.du?`Dès le premier jour du relevé (<b>${fdate(d.date)}</b>), écart de <b>${eur(d.ecart)}</b> : il vient d'avant ce relevé`:`Le <b>${fdate(d.date)}</b> l'écart passe de ${eur(d.avant)} à <b>${eur(d.ecart)}</b>`} (banque ${eur(d.sb)}, appli ${eur(d.sa)})</p>
+      ${d.manque.length?`<div style="font-size:13px">Chez la banque mais pas dans l'appli : ${d.manque.map(l=>`<br>• ${esc(l.lib)} <b>${eur(l.mt)}</b>`).join('')}</div>`:''}
+      ${d.trop.length?`<div style="font-size:13px">Dans l'appli mais pas chez la banque ce jour-là : ${d.trop.map(o=>`<br>• <span class="clic" ${goA({compte:r.c.id,q:o.libelle})}>${esc(o.libelle)}</span> <b>${eur(o.montant)}</b>`).join('')}</div>`:''}
+      ${!d.manque.length&&!d.trop.length?'<div class="muted" style="font-size:13px">Mêmes montants des deux côtés ce jour-là : l\'écart vient sans doute d\'une date décalée (opération enregistrée un autre jour).</div>':''}`).join('')}
+    ${r.det.length>8?`<p class="muted">… et ${r.det.length-8} autre(s) changement(s) d'écart.</p>`:''}</div>`).join('')}`;
+}
+function verifUn(nom,lines){
+  const L=lines.filter(l=>l.solde!=null);
+  if(!lines.length)return {f:nom,err:'aucune opération'};
+  if(!L.length)return {f:nom,err:'pas de colonne Solde dans ce fichier'};
+  // compte : celui qui a le plus d'opérations identiques (date + montant)
+  let best=null,bs=-1;
+  for(const c of D.comptes){const k=new Set(D.ops.filter(o=>o.compte===c.id).map(o=>o.date+'|'+cents(o.montant)));const sc=lines.filter(l=>k.has(l.date+'|'+cents(l.mt))).length;if(sc>bs){bs=sc;best=c}}
+  if(!best||bs===0)return {f:nom,err:'compte non reconnu (aucune opération commune)'};
+  // solde de fin de journée côté banque (ordre du fichier)
+  const asc=lines[0].date<=lines[lines.length-1].date,fin=new Map();
+  for(const l of L){if(asc||!fin.has(l.date))fin.set(l.date,l.solde)}
+  const last=derniereOp(best.id),toutes=[...fin.keys()].sort(),dates=toutes.filter(d=>d<=last),apres=lines.filter(l=>l.date>last).length,det=[];let prev=0,sb=null,sa=null;
+  if(!dates.length)return {f:nom,c:best,du:toutes[0],au:toutes[toutes.length-1],nb:0,apres,err:`relevé plus récent que l'appli (dernière opération le ${fdate(last)}) : ${apres} opération(s) à importer`};
+  for(const d of dates){
+    sb=fin.get(d);sa=soldeAvant(best.id,d+'z');const ec=Math.round((sa-sb)*100)/100;
+    if(Math.abs(ec-prev)>=0.01){
+      const bq=lines.filter(l=>l.date===d).map(l=>({...l})),ap=D.ops.filter(o=>o.compte===best.id&&o.date===d).map(o=>({...o}));
+      const manque=[];for(const l of bq){const j=ap.findIndex(o=>cents(o.montant)===cents(l.mt));if(j>=0)ap.splice(j,1);else manque.push(l)}
+      det.push({date:d,avant:prev,ecart:ec,sb,sa,manque,trop:ap});
+    }
+    prev=ec;
+  }
+  return {f:nom,c:best,du:dates[0],au:dates[dates.length-1],nb:dates.length,sb,sa,apres,etat:Math.abs(sa-sb)<0.01&&!det.length?'ok':'ko',det};
 }
 async function chargeReleve(file){
   $('#iRes').innerHTML='<p class="muted">Lecture du fichier…</p>';
