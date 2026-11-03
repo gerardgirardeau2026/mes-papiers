@@ -58,6 +58,9 @@ table.recap th:first-child{background:var(--th-bg);z-index:3}
 table.recap tr.tot td{font-weight:700;background:var(--tot)}
 table.recap tr.sec td{background:var(--th-bg);color:var(--th-fg);letter-spacing:.04em;font-weight:700;font-size:12px;text-transform:uppercase}
 table.recap tr.sec td:last-child{border-right:0}
+table.recap tbody tr.sec td{border-top:5px solid var(--panel)}
+table.recap tbody tr.sec:first-child td{border-top:0}
+table.recap .dop{font-size:11.5px;color:var(--accent);font-weight:600}
 table.recap tr.sol td{background:var(--sol);color:var(--muted)}
 td input.in,td select.in{border:1px solid transparent;background:transparent;border-radius:6px;padding:3px 5px;width:100%;font-size:13px}
 td input.in:hover,td select.in:hover{border-color:var(--line)}
@@ -249,6 +252,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const eur=n=>(+n||0).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 const eur0=n=>Math.round(+n||0).toLocaleString('fr-FR');
+const derniereOp=cid=>D.ops.reduce((m,o)=>o.compte===cid&&o.date>m?o.date:m,'');
 const fdate=d=>d?d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):'';
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const MOIS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -871,7 +875,7 @@ function vRecap(){
   const line=(r)=>{const a=m.get(r.nom)||Z;return `<tr><td>${esc(r.nom)}</td>${a.map((v,i)=>cell(v,r.nom,i)).join('')}<td class="num"><b>${sum(a)?eur0(sum(a)):''}</b></td></tr>`};
   const nbM=y===new Date().getFullYear()?new Date().getMonth()+1:12;
   const suivis=D.comptes.filter(c=>c.suivi_solde);
-  const sold=suivis.map(c=>`<tr class="sol"><td>Solde début de mois · ${esc(c.nom)}</td>${Z.map((_,i)=>`<td class="num">${i<nbM?eur0(soldeAvant(c.id,`${y}-${String(i+1).padStart(2,'0')}-01`)):''}</td>`).join('')}<td class="num">${eur0(soldeActuel(c.id))}</td></tr>`).join('');
+  const sold=suivis.map(c=>`<tr class="sol"><td>Solde début de mois · ${esc(c.nom)}${(()=>{const d=derniereOp(c.id);return d?` <span class="dop" title="Date de la dernière opération enregistrée sur ce compte">· dernière op. ${fdate(d)}</span>`:''})()}</td>${Z.map((_,i)=>`<td class="num">${i<nbM?eur0(soldeAvant(c.id,`${y}-${String(i+1).padStart(2,'0')}-01`)):''}</td>`).join('')}<td class="num">${eur0(soldeActuel(c.id))}</td></tr>`).join('');
   const nC=D.ops.filter(o=>+o.date.slice(0,4)===y&&aClasser(o)).length;
   $('#view').innerHTML=`${nC?`<p><span class="badge b-warn clic" ${goA({annee:String(y),rub:'__classer'})}>⚠ ${nC} opération(s) ${y} à classer, non comptées ici</span></p>`:''}
   <div class="tw"><table class="recap"><thead><tr><th>${y}</th>${MOISC.map(x=>`<th class="num">${x}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>
