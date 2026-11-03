@@ -59,6 +59,14 @@ table.recap tr.tot td{font-weight:700;background:var(--tot)}
 table.recap tr.sec td{background:var(--th-bg);color:var(--th-fg);letter-spacing:.04em;font-weight:700;font-size:12px;text-transform:uppercase}
 table.recap tr.sec td:last-child{border-right:0}
 table.recap tbody tr.sec td{border-top:5px solid var(--bg)}
+.tw:has(>table.recap){border:0;box-shadow:none;background:transparent;border-radius:0}
+table.recap td{background:var(--panel)}
+table.recap tr>:first-child{border-left:1px solid var(--line)}
+table.recap tr>:last-child{border-right:1px solid var(--line)!important}
+table.recap thead th{border-top:1px solid var(--line)}
+table.recap tbody tr:last-child td{border-bottom:1px solid var(--line)}
+table.recap tbody tr.sec>td:first-child{border-left-color:var(--bg)}
+table.recap tbody tr.sec>td:last-child{border-right-color:var(--bg)!important}
 table.recap tbody tr.sec:first-child td{border-top:0}
 table.recap .dop{font-size:11.5px;color:var(--accent);font-weight:600}
 table.recap tr.sol td{background:var(--sol);color:var(--muted)}
