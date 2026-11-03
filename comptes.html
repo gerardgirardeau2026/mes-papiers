@@ -170,6 +170,8 @@ body[data-theme=sombre] #rubPick mark{background:#6b5a1f}
 @media print{body.printing .app,body.printing .ov,body.printing .toast,body.printing .lock{display:none!important}body.printing #printZone{display:block}@page{margin:12mm}}
 @media print{aside,.top .btn,.top select,.filters,.noprint{display:none!important}.app{display:block}main{padding:0}.tw,.box{box-shadow:none;border:0}th{position:static}}
 input.num,.in.num{text-align:right}
+tbody tr.dblc>td{background:#fbe1dc!important}
+body[data-theme=sombre] tbody tr.dblc>td{background:#4a2a26!important}
 </style>
 </head>
 <body>
@@ -571,13 +573,21 @@ function topDep(y){
 }
 
 /* =================== opérations =================== */
+let dblC=null,dblCV=-1;
+function dblCarte(){ // opérations d'un compte suivi qui existent aussi sur une carte (même date, montant, libellé)
+  if(dblC&&dblCV===dataVer)return dblC;
+  const cle=o=>o.date+'|'+cents(o.montant)+'|'+norm(o.libelle).replace(/[^a-z0-9]/g,'').slice(0,12);
+  const cartes=new Map();for(const o of D.ops){const c=compte(o.compte);if(c&&!c.suivi_solde){const k=cle(o);if(!cartes.has(k))cartes.set(k,[]);cartes.get(k).push(c.nom)}}
+  dblC=new Map();if(cartes.size)for(const o of D.ops){const c=compte(o.compte);if(!c?.suivi_solde)continue;const l=cartes.get(cle(o));if(l&&l.length)dblC.set(o.id,l.shift())}
+  dblCV=dataVer;return dblC;
+}
 function filtreOps(){
   const f=st.f,q=norm(f.q),qa=parseFloat(String(f.q).replace(',','.'));
   return D.ops.filter(o=>{
     if(f.compte&&o.compte!==f.compte)return false;
     if(f.annee&&o.date.slice(0,4)!==f.annee)return false;
     if(f.mois&&+o.date.slice(5,7)!==+f.mois)return false;
-    if(f.rub==='__classer'){if(!aClasser(o))return false}else if(f.rub&&norm(o.rubrique)!==norm(f.rub))return false;
+    if(f.rub==='__dblcarte'){if(!dblCarte().has(o.id))return false}else if(f.rub==='__classer'){if(!aClasser(o))return false}else if(f.rub&&norm(o.rubrique)!==norm(f.rub))return false;
     if(q&&!(norm(o.libelle).includes(q)||norm(o.rubrique).includes(q)||norm(o.note).includes(q)||(!isNaN(qa)&&Math.abs(Math.abs(o.montant)-Math.abs(qa))<0.005)))return false;
     return true;
   });
@@ -595,13 +605,13 @@ function vOps(){
     <select class="f" id="fC"><option value="">Tous les comptes</option>${D.comptes.map(c=>`<option value="${c.id}" ${c.id===f.compte?'selected':''}>${esc(c.nom)}</option>`).join('')}</select>
     <select class="f" id="fA"><option value="">Toutes années</option>${ys.map(y=>`<option ${String(y)===f.annee?'selected':''}>${y}</option>`).join('')}</select>
     <select class="f" id="fM"><option value="">Tous les mois</option>${MOIS.map((m,i)=>`<option value="${i+1}" ${String(i+1)===String(f.mois)?'selected':''}>${m}</option>`).join('')}</select>
-    <select class="f" id="fR"><option value="">Toutes rubriques</option><option value="__classer" ${f.rub==='__classer'?'selected':''}>⚠ À classer</option>${D.rubs.map(r=>`<option ${norm(r.nom)===norm(f.rub)?'selected':''}>${esc(r.nom)}</option>`).join('')}</select>
+    <select class="f" id="fR"><option value="">Toutes rubriques</option><option value="__classer" ${f.rub==='__classer'?'selected':''}>⚠ À classer</option>${dblCarte().size?`<option value="__dblcarte" ${f.rub==='__dblcarte'?'selected':''}>⚠ Doublons avec une carte (${dblCarte().size})</option>`:''}${D.rubs.map(r=>`<option ${norm(r.nom)===norm(f.rub)?'selected':''}>${esc(r.nom)}</option>`).join('')}</select>
     <input class="f" id="fQ" type="search" placeholder="Libellé, montant…" value="${esc(f.q)}" style="min-width:200px">
   </div>
-  <p class="muted" style="margin:-4px 0 10px;font-size:13.5px">${list.length} opération${list.length>1?'s':''} · total <b class="${tot<0?'neg':'pos'}">${eur(tot)}</b>${single?` · solde actuel <b>${eur(soldeActuel(f.compte))}</b>`:''}</p>
+  <p class="muted" style="margin:-4px 0 10px;font-size:13.5px">${list.length} opération${list.length>1?'s':''} · total <b class="${tot<0?'neg':'pos'}">${eur(tot)}</b>${single?` · solde actuel <b>${eur(soldeActuel(f.compte))}</b>`:''}${f.rub==='__dblcarte'&&list.length?` <button class="btn" id="bDelDbl" style="margin-left:10px;border-color:var(--danger);color:var(--danger)">🗑 Supprimer ces ${list.length} doublons</button>`:''}${f.rub!=='__dblcarte'&&list.some(o=>dblCarte().has(o.id))?` · <span class="badge b-warn clic" id="bVoirDbl">⚠ ${list.filter(o=>dblCarte().has(o.id)).length} doublon(s) avec une carte</span>`:''}</p>
   ${list.length?`<div class="tw"><table class="opst nl"><thead><tr><th class="ln hide-m">N°</th><th>Date</th>${f.compte?'':'<th class="hide-m">Compte</th>'}<th>Libellé</th><th class="num">Montant</th><th style="min-width:190px">Rubrique</th>${single?'<th class="num hide-m">Solde</th>':''}<th class="hide-m"></th></tr></thead>
-  <tbody>${rows.slice(0,st.lim).map(({o,s})=>`<tr data-id="${o.id}"><td class="ln hide-m"></td><td class="d" style="white-space:nowrap">${fdate(o.date)}</td>${f.compte?'':`<td class="hide-m muted" style="white-space:nowrap">${esc(cNom(o.compte))}</td>`}
-    <td class="clic lib" data-edit="${o.id}">${esc(o.libelle)}${o.note?`<div class="muted" style="font-size:12px">${esc(o.note)}</div>`:''}</td>
+  <tbody>${rows.slice(0,st.lim).map(({o,s})=>`<tr data-id="${o.id}" ${dblCarte().has(o.id)?'class="dblc"':''}><td class="ln hide-m"></td><td class="d" style="white-space:nowrap">${fdate(o.date)}</td>${f.compte?'':`<td class="hide-m muted" style="white-space:nowrap">${esc(cNom(o.compte))}</td>`}
+    <td class="clic lib" data-edit="${o.id}">${esc(o.libelle)}${dblCarte().has(o.id)?` <span class="badge b-warn">doublon : aussi sur ${esc(dblCarte().get(o.id))}</span>`:''}${o.note?`<div class="muted" style="font-size:12px">${esc(o.note)}</div>`:''}</td>
     <td class="num mt ${o.montant<0?'neg':'pos'}">${eur(o.montant)}</td>
     <td class="rb">${rubBtn(o.rubrique,`data-rub="${o.id}"`)}</td>
     ${single?`<td class="num hide-m ${s<0?'neg':''}">${eur(s)}</td>`:''}<td class="hide-m">${o.doc_id?'📎':''}</td></tr>`).join('')}</tbody></table></div>
@@ -610,6 +620,11 @@ function vOps(){
   $('#fC').onchange=upd('compte');$('#fA').onchange=upd('annee');$('#fM').onchange=upd('mois');$('#fR').onchange=upd('rub');
   let qt;$('#fQ').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{st.f.q=e.target.value;st.lim=300;vOps();const i=$('#fQ');i.focus();i.setSelectionRange(i.value.length,i.value.length)},300)};
   if($('#bMore'))$('#bMore').onclick=()=>{st.lim+=500;vOps()};
+  if($('#bVoirDbl'))$('#bVoirDbl').onclick=()=>{st.f.rub='__dblcarte';st.lim=300;vOps()};
+  if($('#bDelDbl'))$('#bDelDbl').onclick=async()=>{
+    const ids=list.map(o=>o.id);if(!confirm(`Supprimer ces ${ids.length} opérations ?\n\nElles sont en double : elles restent sur la carte, la banque les prélève via « RELEVE CARTE ».`))return;
+    try{for(let i=0;i<ids.length;i+=100)chk(await T('cpt_operations').delete().in('id',ids.slice(i,i+100)),'suppression')}catch(e){toast('Erreur : '+e.message);return}
+    const set=new Set(ids);D.ops=D.ops.filter(o=>!set.has(o.id));index();st.f.rub='';vOps();toast(`${ids.length} doublon(s) supprimé(s)`)};
   $('#bAddOp').onclick=()=>openOp(null);
   $('#bRel').onclick=openReleve;if($('#bRet'))$('#bRet').onclick=retour;
   $('#bExpOps').onclick=()=>exportXlsx([['Date','Compte','Libellé','Montant','Rubrique','Note'],...list.map(o=>[o.date,cNom(o.compte),o.libelle,o.montant,o.rubrique,o.note||''])],'Operations','operations');
@@ -862,14 +877,30 @@ async function chargeReleve(file){
 }
 function prepImport(){
   const lines=IMP.tabs[IMP.tab].lines.slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
-  const exist=new Map();for(const o of D.ops)if(o.compte===IMP.compte){const k=o.date+'|'+cents(o.montant);exist.set(k,(exist.get(k)||0)+1)}
+  const mine=D.ops.filter(o=>o.compte===IMP.compte).map(o=>({d:o.date,c:cents(o.montant),u:false}));
+  const debut=mine.reduce((m,o)=>!m||o.d<m?o.d:m,'');
+  const parJour=new Map();for(const o of mine){if(!parJour.has(o.d))parJour.set(o.d,[]);parJour.get(o.d).push(o)}
+  const etat=lines.map(()=>null);
+  // 1) même date, même montant
+  lines.forEach((l,i)=>{if(debut&&l.date<debut){etat[i]={avant:true};return}
+    const o=(parJour.get(l.date)||[]).find(o=>!o.u&&o.c===cents(l.mt));if(o){o.u=true;etat[i]={dbl:'déjà là'}}});
+  // 2) prélèvement découpé en plusieurs lignes le même jour (même total)
+  lines.forEach((l,i)=>{if(etat[i])return;const t=cents(l.mt),d0=new Date(l.date),sg=Math.sign(t);
+    const c=mine.filter(o=>!o.u&&(o.c===0||Math.sign(o.c)===sg)&&Math.abs((new Date(o.d)-d0)/864e5)<=3).sort((a,b)=>Math.abs(new Date(a.d)-d0)-Math.abs(new Date(b.d)-d0)).slice(0,16);
+    if(c.length<2)return;
+    for(let m=3;m<(1<<c.length);m++){if((m&(m-1))===0)continue;let s=0;for(let j=0;j<c.length;j++)if(m>>j&1)s+=c[j].c;
+      if(s===t){let n=0;for(let j=0;j<c.length;j++)if(m>>j&1){c[j].u=true;n++}etat[i]={dbl:`déjà là, découpé en ${n} lignes`};break}}});
+  // 3) même montant à 3 jours près (date décalée)
+  lines.forEach((l,i)=>{if(etat[i])return;const t=cents(l.mt),d0=new Date(l.date);let best=null;
+    for(const o of mine){if(o.u||o.c!==t)continue;const dd=Math.abs((new Date(o.d)-d0)/864e5);if(dd<=3&&(!best||dd<best.dd))best={o,dd}}
+    if(best){best.o.u=true;etat[i]={dbl:`déjà là au ${fdate(best.o.d)}`}}});
   const chq=D.cheques.filter(c=>c.compte===IMP.compte);
-  IMP.lines=lines.map(l=>{
-    const k=l.date+'|'+cents(l.mt),n=exist.get(k)||0,dbl=n>0;if(dbl)exist.set(k,n-1);
+  IMP.lines=lines.map((l,i)=>{
+    const e=etat[i]||{},dbl=!!(e.dbl||e.avant);
     let lib=l.lib,rub=classer(lib),auto=!!rub;
     const m=lib.match(/ch[eè]que\D{0,12}(\d{4,})/i)||(l.type.includes('cheque')?lib.match(/(\d{5,})/):null);
     if(m){const c=chq.find(c=>String(c.numero).replace(/^0+/,'')===m[1].replace(/^0+/,''));if(c){lib+=':'+(c.beneficiaire||'');if(c.rubrique){rub=c.rubrique;auto=true}}}
-    return {...l,lib,rub,auto,motif:'',ok:!dbl,dbl};
+    return {...l,lib,rub,auto,motif:'',ok:!dbl,dbl,why:e.avant?'avant le début du compte':e.dbl};
   });
   renderImport();
 }
@@ -891,7 +922,7 @@ function impVisible(l){
 }
 function renderImport0(){
   IMP.f=IMP.f||{q:'',etat:'',rub:'',an:'',mois:''};const F=IMP.f;
-  const L=IMP.lines,nN=L.filter(l=>!l.dbl).length,nD=L.length-nN,nC=L.filter(l=>l.ok&&!rubOf(l.rub)).length;
+  const L=IMP.lines,nAv=L.filter(l=>l.why==='avant le début du compte').length,nN=L.filter(l=>!l.dbl).length,nD=L.length-nN,nC=L.filter(l=>l.ok&&!rubOf(l.rub)).length;
   const c=compte(IMP.compte),last=[...L].reverse().find(l=>l.solde!=null);
   let soldeMsg='';
   if(c?.suivi_solde&&last){
@@ -901,7 +932,7 @@ function renderImport0(){
   }
   $('#iRes').innerHTML=`
   ${IMP.tabs.length>1?`<p>Feuille : <select class="f" id="iTab">${IMP.tabs.map((t,i)=>`<option value="${i}" ${i===IMP.tab?'selected':''}>${esc(t.nom)} (${t.lines.length} lignes)</option>`).join('')}</select></p>`:''}
-  <p style="margin:14px 0 8px"><b>${esc(IMP.file)}</b> · du ${fdate(L[0]?.date)} au ${fdate(L[L.length-1]?.date)} · <span class="badge b-ok">${nN} nouvelle(s)</span> <span class="badge b-grey">${nD} déjà enregistrée(s)</span> ${nC?`<span class="badge b-warn">${nC} à classer</span>`:''} ${soldeMsg}</p>
+  <p style="margin:14px 0 8px"><b>${esc(IMP.file)}</b> · du ${fdate(L[0]?.date)} au ${fdate(L[L.length-1]?.date)} · <span class="badge b-ok">${nN} nouvelle(s)</span> <span class="badge b-grey">${nD-nAv} déjà enregistrée(s)</span> ${nAv?`<span class="badge b-grey">${nAv} avant le début du compte</span>`:''} ${nC?`<span class="badge b-warn">${nC} à classer</span>`:''} ${soldeMsg}</p>
   ${(()=>{const rubs=[...new Set(L.map(l=>rubOf(l.rub)?.nom).filter(Boolean))].sort();const ans=[...new Set(L.map(l=>l.date.slice(0,4)))].sort(),vis=L.filter(impVisible).length,filt=F.q||F.etat||F.rub||F.an||F.mois;
    return `<div class="filters" style="margin:0 0 8px;flex-wrap:wrap;gap:8px;align-items:center">
     <input class="f" id="iQ" placeholder="🔍 Rechercher (libellé, rubrique, montant)" value="${esc(F.q)}" style="min-width:260px">
@@ -913,7 +944,7 @@ function renderImport0(){
       return `<button class="btn" id="iDecoche" title="Décoche ${lab}">☐ Décocher ${lab}</button><button class="btn" id="iCoche" title="Coche ${lab}">☑ Cocher ${lab}</button>`})()}
     ${filt?`<span class="muted" style="font-size:13px">${vis} ligne(s) affichée(s) sur ${L.length}</span> <button class="btn" id="iRaz">✕ Effacer les filtres</button>`:''}</div>`})()}
   <div class="tw" style="max-height:60vh"><table><thead><tr><th class="ln">N°</th><th style="width:30px"><input type="checkbox" id="iAll" title="Cocher / décocher les lignes affichées" ${L.filter(impVisible).every(l=>l.ok||l.dbl)?'checked':''}></th><th>Date</th><th>Libellé</th><th class="num">Montant</th><th style="min-width:200px">Rubrique</th><th>Retenir pour la suite</th></tr></thead>
-  <tbody>${L.map((l,i)=>!impVisible(l)?'':`<tr style="${l.dbl?'opacity:.5':''}"><td class="ln">${i+1}</td><td><input type="checkbox" data-i="${i}" data-k="ok" ${l.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(l.date)}</td><td>${esc(l.lib)}${l.dbl?' <span class="badge b-grey">déjà là</span>':''}</td>
+  <tbody>${L.map((l,i)=>!impVisible(l)?'':`<tr style="${l.dbl?'opacity:.5':''}"><td class="ln">${i+1}</td><td><input type="checkbox" data-i="${i}" data-k="ok" ${l.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(l.date)}</td><td>${esc(l.lib)}${l.dbl?` <span class="badge b-grey">${esc(l.why||'déjà là')}</span>`:''}</td>
     <td class="num ${l.mt<0?'neg':'pos'}">${eur(l.mt)}</td>
     <td>${rubBtn(l.rub,`data-ib="${i}"`)}</td>
     <td>${l.auto?'<span class="muted" style="font-size:12px">règle existante</span>':`<input class="in" data-i="${i}" data-k="motif" value="${esc(l.motif)}" placeholder="${rubOf(l.rub)?'motif à retenir':''}" ${rubOf(l.rub)?'':'disabled'}>`}</td></tr>`).join('')}</tbody></table></div>
