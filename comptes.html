@@ -141,15 +141,17 @@ select.rub.vide{background:var(--warn-soft);border-color:#efc9b3}
   table.opst td.rb select{border:1px solid var(--line);padding:5px}
 }
 /* thèmes */
-body[data-theme=bleu]{--accent:#2b5c8a;--accent-soft:#e3edf6;--th-bg:#d3e2f0;--th-fg:#1d4269;--bg:#f2f5f8;--side:#f7f9fb;--zebra:#f2f5f9;--hover:#e6edf4;--tot:#e9eff5;--sol:#f5f8fb;--line:#d9e1e9}
-body[data-theme=bordeaux]{--accent:#7b2f3f;--accent-soft:#f4e6e9;--th-bg:#ecd5da;--th-fg:#5a1f2c;--bg:#f7f2f1;--side:#fbf7f6;--zebra:#f8f1f0;--hover:#f0e4e4;--tot:#f2e8e7;--sol:#faf5f4;--line:#e8dadb}
-body[data-theme=ardoise]{--accent:#3f4b59;--accent-soft:#e6e9ed;--th-bg:#d8dde3;--th-fg:#2a333d;--bg:#f2f3f5;--side:#f7f8f9;--zebra:#f3f4f6;--hover:#e8eaee;--tot:#eceef1;--sol:#f6f7f8;--line:#dcdfe4}
-body[data-theme=sombre]{color-scheme:dark;--bg:#16181b;--panel:#1f2226;--ink:#e6e6e6;--muted:#9aa0a6;--line:#33373d;--accent:#6fbf9d;--accent-soft:#233b32;--warn:#e39a6f;--warn-soft:#3a2a20;--danger:#ef7d7d;--pos:#6fcf97;--neg:#f08b8b;
-  --sep:#4a5058;--th-bg:#26352f;--th-fg:#bfe3d2;--side:#1b1d21;--zebra:#23272c;--hover:#2b3036;--tot:#2a2e33;--sol:#202327}
+body[data-theme=clair]{--bg:#f4f5f7;--panel:#fff;--line:#e3e6ea;--accent:#2f5bd3;--accent-soft:#f1f5ff;--th-bg:#e3ebff;--th-fg:#214094;--sep:#8a94a6;--zebra:#f6f7f8;--hover:#eef0f3;--side:#fafbfc;--tot:#f3f5f8;--sol:#fbfcf3}
+body[data-theme=bleu]{--bg:#edf2fa;--panel:#fff;--line:#cddbef;--accent:#1d5fbf;--accent-soft:#e5eeff;--th-bg:#d3e1fb;--th-fg:#144286;--sep:#5d7ca6;--zebra:#eff3fa;--hover:#e2eaf6;--side:#e9f0fb;--tot:#e6edf8;--sol:#f2f7ff}
+body[data-theme=vert]{--bg:#eef5f0;--panel:#fff;--line:#cbe1d2;--accent:#1f7a4d;--accent-soft:#e8f5ec;--th-bg:#d2eadb;--th-fg:#165536;--sep:#5a8a69;--zebra:#eef6f1;--hover:#e1eee5;--side:#e8f2eb;--tot:#e5efe8;--sol:#f4f9ec}
+body[data-theme=sable]{--bg:#f7f2ea;--panel:#fff;--line:#e1d3bf;--accent:#b4541a;--accent-soft:#fbf0e2;--th-bg:#f3dfc4;--th-fg:#7e3b12;--sep:#9c8466;--zebra:#f6f0e9;--hover:#eee4d7;--side:#f3ebdf;--tot:#efe6d9;--sol:#fbf6ea}
+body[data-theme=violet]{--bg:#f3f1f9;--panel:#fff;--line:#d9d2ee;--accent:#6a3fc1;--accent-soft:#f0ebff;--th-bg:#e0d6fb;--th-fg:#4a2c87;--sep:#7d6ca6;--zebra:#f3f1fa;--hover:#e9e5f5;--side:#efecf8;--tot:#ebe7f6;--sol:#f7f4ff}
+body[data-theme=sombre]{color-scheme:dark;--bg:#14171c;--panel:#1d2128;--ink:#e6e9ee;--muted:#9aa3b2;--line:#353b46;--accent:#6f93ff;--accent-soft:#1e2940;--warn:#e39a6f;--warn-soft:#3a2a20;--danger:#ef7d7d;--pos:#6fcf97;--neg:#f08b8b;
+  --sep:#6b7587;--th-bg:#263559;--th-fg:#c9d6ff;--side:#1a1d23;--zebra:#22262e;--hover:#2a2f38;--tot:#2a2f39;--sol:#1f232a}
 body[data-theme=sombre] .btn,body[data-theme=sombre] select.f,body[data-theme=sombre] input.f,body[data-theme=sombre] .modal,body[data-theme=sombre] .drop,body[data-theme=sombre] #rubPick,
 body[data-theme=sombre] .side-foot button,body[data-theme=sombre] .side-foot a,body[data-theme=sombre] .form input,body[data-theme=sombre] .form select,body[data-theme=sombre] .form textarea,body[data-theme=sombre] .pad button,
 body[data-theme=sombre] td input.in:focus,body[data-theme=sombre] td select.in:focus,body[data-theme=sombre] .rubbtn:hover{background:var(--panel);color:var(--ink);border-color:var(--line)}
-body[data-theme=sombre] .btn.pri{background:var(--accent);color:#10231b;border-color:var(--accent)}
+body[data-theme=sombre] .btn.pri{background:var(--accent);color:#0d1220;border-color:var(--accent)}
 body[data-theme=sombre] .badge.b-grey{background:#2c3035;color:var(--muted)}body[data-theme=sombre] .b-err{background:#3d2424}
 body[data-theme=sombre] #rubPick mark{background:#6b5a1f}
 .themes{display:flex;gap:10px;flex-wrap:wrap}
@@ -176,7 +178,7 @@ body[data-theme=sombre] tbody tr.dblc>td{background:#4a2a26!important}
 </style>
 </head>
 <body>
-<script>try{document.body.dataset.theme=localStorage.getItem("mc-theme")||""}catch(e){}</script>
+<script>var THEMES=[["clair","Clair"],["bleu","Bleu"],["vert","Vert"],["sable","Sable"],["violet","Violet"],["sombre","Sombre"]];try{var t=localStorage.getItem("mc-theme");document.body.dataset.theme=THEMES.some(function(x){return x[0]===t})?t:"clair"}catch(e){document.body.dataset.theme="clair"}</script>
 <div class="app">
   <aside id="side">
     <div class="logo">Mes <span>Comptes</span></div>
@@ -201,6 +203,7 @@ body[data-theme=sombre] tbody tr.dblc>td{background:#4a2a26!important}
     </div>
     <div class="side-foot">
       <div class="who" id="who"></div>
+      <select class="f" id="selTh" title="Thème de couleur" style="width:100%"></select>
       <a href="index.html">📄 Mes Papiers</a>
       <button id="bLock" style="display:none">🔒 Verrouiller</button>
     </div>
@@ -263,6 +266,8 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const eur=n=>(+n||0).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 const eur0=n=>Math.round(+n||0).toLocaleString('fr-FR');
+function setTheme(t){document.body.dataset.theme=t;try{localStorage.setItem('mc-theme',t)}catch(_){}const sel=document.getElementById('selTh');if(sel)sel.value=t}
+(()=>{const sel=document.getElementById('selTh');if(!sel)return;sel.innerHTML=THEMES.map(([k,l])=>`<option value="${k}">🎨 ${l}</option>`).join('');sel.value=document.body.dataset.theme;sel.onchange=e=>{setTheme(e.target.value);if(typeof st!=='undefined'&&st.view==='reglages')render()}})();
 const derniereOp=cid=>D.ops.reduce((m,o)=>o.compte===cid&&o.date>m?o.date:m,'');
 const fdate=d=>d?d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):'';
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
@@ -1444,7 +1449,7 @@ function vReglages(){
    <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:10px"><input type="checkbox" id="xAlias" checked> Harmoniser les rubriques mal orthographiées (GOLF → SORTIES / LOISIRS / GOLF, PLACEMENT → PLACEMENTS…)</label>
    <div class="drop" id="xDrop">📊 Dépose ici ton classeur .xlsm (ou clique pour le choisir)<input type="file" id="xFile" accept=".xlsm,.xlsx" hidden></div>
    <div class="prog" id="xProg" style="display:none"><i></i></div><p id="xMsg"></p></div>
-  <div class="box"><h2>Thème</h2><div class="themes" id="themes">${[['','Vert','#2f5d50'],['bleu','Bleu','#2b5c8a'],['bordeaux','Bordeaux','#7b2f3f'],['ardoise','Ardoise','#3f4b59'],['sombre','Sombre','#16181b']].map(([k,l,c])=>`<button data-th="${k}" class="${(document.body.dataset.theme||'')===k?'on':''}"><i style="background:${c}"></i>${l}</button>`).join('')}</div>
+  <div class="box"><h2>Thème</h2><div class="themes" id="themes">${THEMES.map(([k,l])=>[k,l,getComputedStyle(document.body).getPropertyValue('--accent')&&({clair:'#2f5bd3',bleu:'#1d5fbf',vert:'#1f7a4d',sable:'#b4541a',violet:'#6a3fc1',sombre:'#14171c'})[k]]).map(([k,l,c])=>`<button data-th="${k}" class="${document.body.dataset.theme===k?'on':''}"><i style="background:${c}"></i>${l}</button>`).join('')}</div>
    <p class="muted" style="font-size:12.5px;margin:8px 0 0">Le thème est mémorisé sur cet appareil.</p></div>
   <div class="box"><h2>Sauvegarde</h2><p style="margin-top:0">Exporte toutes tes données (opérations, règles, rubriques, épargne, chèques) dans un fichier Excel.</p><button class="btn" id="bBackup">⬇ Tout exporter en Excel</button></div>`;
   const saveD=async patch=>{try{chk(await sb.from('cpt_dossiers').update(patch).eq('id',ds.id),'dossier');Object.assign(ds,patch);majDossierUI();toast('Dossier enregistré');vReglages()}catch(e){toast('Erreur : '+e.message)}};
@@ -1464,7 +1469,7 @@ function vReglages(){
   ['dragenter','dragover'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.add('hot')}));['dragleave','drop'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.remove('hot')}));
   dr.addEventListener('drop',e=>{if(e.dataTransfer.files[0])importGGI(e.dataTransfer.files[0])});
   $('#bBackup').onclick=exportTout;
-  $('#themes').onclick=e=>{const b=e.target.closest('[data-th]');if(!b)return;document.body.dataset.theme=b.dataset.th;try{localStorage.setItem('mc-theme',b.dataset.th)}catch(_){}vReglages()};
+  $('#themes').onclick=e=>{const b=e.target.closest('[data-th]');if(!b)return;setTheme(b.dataset.th);vReglages()};
 }
 const ALIAS={'golf':'SORTIES / LOISIRS / GOLF','sorties / loisirs':'SORTIES / LOISIRS / GOLF','placement':'PLACEMENTS','res':'RESTAURANT','restaurant gg':'RESTAURANT','cadeau coco':'CADEAU'};
 async function importGGI(file){
