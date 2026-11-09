@@ -73,6 +73,20 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(25,25,20,.42);display:none;align-items:flex-start;justify-content:center;padding:4vh 16px;z-index:10;overflow:auto}
 .ov.on{display:flex}
+#fv{position:fixed;top:4vh;right:16px;width:min(46vw,780px);height:90vh;min-width:280px;min-height:200px;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.35);z-index:20;display:none;flex-direction:column;overflow:hidden;resize:both}
+#fv.on{display:flex}
+#fv .fvh{display:flex;align-items:center;gap:6px;padding:7px 10px;background:#2f4f46;color:#fff;cursor:move;user-select:none;font-size:13px}
+#fv .fvh b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fv .fvh button{background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:13px}
+#fv .fvh button.on{background:#fff;color:#2f4f46}
+#fv .fvb{flex:1;overflow:auto;background:#525659;display:flex;align-items:flex-start;justify-content:center}
+#fv .fvb iframe{width:100%;height:100%;border:0;background:#fff}
+#fv .fvb img{max-width:100%;transform-origin:top center}
+#fv .fvb p{color:#eee;padding:20px}
+#fv.min{height:auto!important;resize:none}#fv.min .fvb{display:none}
+#ovForm.avecFv{justify-content:flex-start}
+@media (max-width:820px){#fv{top:0;left:0;right:0;width:100%!important;height:42vh;border-radius:0;resize:vertical}#ovForm.avecFv{padding-top:44vh}}
+@media print{#fv{display:none!important}}
 .modal{background:#fff;border-radius:14px;width:min(760px,100%);box-shadow:0 20px 60px rgba(0,0,0,.25)}
 .modal.wide{width:min(1100px,100%)}
 .mh{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
@@ -509,14 +523,43 @@ function addFiles(list){
   for(const file of list){
     pending.push({id:uid(),nom:file.name,type:file.type||'application/octet-stream',taille:file.size,blob:file});
   }
+  if(list.length)setTimeout(()=>fvShow(pending.length-list.length),0);
   const f=$('#form');
   if(!f.titre.value && pending.length) f.titre.value=pending[0].nom.replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ');
   renderFiles();
 }
-function renderFiles(){
-  $('#fileList').innerHTML=pending.map((p,i)=>`<div class="file">${p.type.startsWith('image/')?'🖼️':p.type==='application/pdf'?'📕':'📄'} ${esc(p.nom)} <span class="s">${fsize(p.taille||0)}</span><button type="button" data-rm="${i}" title="Retirer">✕</button></div>`).join('');
+/* ---- fenêtre flottante d'aperçu du document déposé ---- */
+let fvUrl=null,fvIdx=0,fvZoom=1;
+document.body.insertAdjacentHTML('beforeend',`<div id="fv"><div class="fvh" id="fvh"><span>👁</span><b id="fvT"></b><span id="fvTabs"></span>
+  <button type="button" id="fvZm" title="Réduire l'image">−</button><button type="button" id="fvZp" title="Agrandir l'image">+</button>
+  <button type="button" id="fvMin" title="Réduire / déplier la fenêtre">▁</button><button type="button" id="fvX" title="Fermer l'aperçu">✕</button></div><div class="fvb" id="fvB"></div></div>`);
+async function fvShow(i){
+  const p=pending[i];if(!p){fvClose();return}
+  fvIdx=i;const fv=$('#fv');fv.classList.add('on');fv.classList.remove('min');$('#ovForm').classList.add('avecFv');
+  $('#fvT').textContent=p.nom;
+  $('#fvTabs').innerHTML=pending.length>1?pending.map((q,j)=>`<button type="button" data-fvi="${j}" class="${j===i?'on':''}">${j+1}</button>`).join(''):'';
+  const isImg=p.type.startsWith('image/');$('#fvZm').style.display=$('#fvZp').style.display=isImg?'':'none';
+  let blob=p.blob;
+  if(!blob){$('#fvB').innerHTML='<p>Chargement…</p>';try{blob=await getBlob(editing,p)}catch(e){$('#fvB').innerHTML='<p>Fichier injoignable pour l\'instant.</p>';return}if(fvIdx!==i)return}
+  if(fvUrl)URL.revokeObjectURL(fvUrl);fvUrl=URL.createObjectURL(blob);fvZoom=1;
+  $('#fvB').innerHTML=isImg?`<img src="${fvUrl}" alt="">`:p.type==='application/pdf'||p.type.startsWith('text/')?`<iframe src="${fvUrl}${p.type==='application/pdf'?'#view=FitH':''}"></iframe>`:'<p>Aperçu impossible pour ce type de fichier.</p>';
 }
-$('#fileList').onclick=e=>{const i=e.target.dataset.rm;if(i!=null){pending.splice(+i,1);renderFiles()}};
+function fvClose(){$('#fv').classList.remove('on');$('#ovForm').classList.remove('avecFv');$('#fvB').innerHTML='';if(fvUrl){URL.revokeObjectURL(fvUrl);fvUrl=null}}
+$('#fvX').onclick=fvClose;
+$('#fvMin').onclick=()=>$('#fv').classList.toggle('min');
+$('#fvTabs').onclick=e=>{const j=e.target.dataset.fvi;if(j!=null)fvShow(+j)};
+const fvImgZ=k=>{fvZoom=Math.min(5,Math.max(.3,fvZoom*k));const im=$('#fvB img');if(im){im.style.maxWidth='none';im.style.width=(fvZoom*100)+'%'}};
+$('#fvZp').onclick=()=>fvImgZ(1.25);$('#fvZm').onclick=()=>fvImgZ(.8);
+(()=>{const fv=$('#fv'),h=$('#fvh');let dx,dy,on=false;
+  h.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;on=true;const r=fv.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;h.setPointerCapture(e.pointerId);$('#fvB').style.pointerEvents='none'});
+  h.addEventListener('pointermove',e=>{if(!on)return;fv.style.right='auto';fv.style.left=Math.max(0,Math.min(innerWidth-80,e.clientX-dx))+'px';fv.style.top=Math.max(0,Math.min(innerHeight-40,e.clientY-dy))+'px'});
+  const up=()=>{on=false;$('#fvB').style.pointerEvents=''};h.addEventListener('pointerup',up);h.addEventListener('pointercancel',up);
+})();
+function renderFiles(){
+  $('#fileList').innerHTML=pending.map((p,i)=>`<div class="file">${p.type.startsWith('image/')?'🖼️':p.type==='application/pdf'?'📕':'📄'} <a href="#" data-fvo="${i}" title="Afficher dans la fenêtre d'aperçu">${esc(p.nom)}</a> <span class="s">${fsize(p.taille||0)}</span><button type="button" data-rm="${i}" title="Retirer">✕</button></div>`).join('');
+}
+$('#fileList').onclick=e=>{const o=e.target.dataset.fvo;if(o!=null){e.preventDefault();fvShow(+o);return}
+  const i=e.target.dataset.rm;if(i!=null){pending.splice(+i,1);renderFiles();if($('#fv').classList.contains('on'))pending.length?fvShow(Math.min(fvIdx,pending.length-1)):fvClose()}};
 const drop=$('#drop');
 drop.onclick=()=>$('#fFiles').click();
 $('#fFiles').onchange=e=>{const fl=[...e.target.files];const first=!pending.length;addFiles(fl);e.target.value='';if(first&&!editing&&fl.length)autoFill(fl)};
@@ -590,7 +633,7 @@ $('#bDel').onclick=async()=>{
 
 /* ---------- modales ---------- */
 function show(s){$(s).classList.add('on')}
-function hide(s){$(s).classList.remove('on');if(s==='#ovDet'){detId=null;urls.forEach(URL.revokeObjectURL);urls=[]}}
+function hide(s){$(s).classList.remove('on');if(s==='#ovForm')fvClose();if(s==='#ovDet'){detId=null;urls.forEach(URL.revokeObjectURL);urls=[]}}
 document.querySelectorAll('.ov').forEach(o=>{
   o.addEventListener('mousedown',e=>{if(e.target===o)hide('#'+o.id)});
   o.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>hide('#'+o.id));
