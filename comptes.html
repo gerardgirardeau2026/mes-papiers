@@ -719,6 +719,7 @@ $('#relGo').onclick=()=>{
   setTimeout(()=>{window.print();setTimeout(()=>document.body.classList.remove('printing'),500)},100);
 };
 window.addEventListener('afterprint',()=>document.body.classList.remove('printing'));
+function titulaire(cid){const inf=(typeof dossier==='function'&&dossier().infos)||{};return (inf.tit||{})[cid]||inf.titulaires||''}
 function releveHTML(cid,du,au,avecRub){
   const c=compte(cid),suivi=c.suivi_solde,ops=D.ops.filter(o=>o.compte===cid&&o.date>=du&&o.date<=au);
   const e2=v=>v?eur(v).replace(/\u202f|\u00a0/g,' '):'';
@@ -726,7 +727,7 @@ function releveHTML(cid,du,au,avecRub){
   const lignes=ops.map(o=>{if(o.montant<0)deb-=o.montant;else cre+=o.montant;solde=Math.round((solde+o.montant)*100)/100;
     return `<tr><td>${fdate(o.date)}</td><td>${esc(o.libelle)}${o.note?` <i>(${esc(o.note)})</i>`:''}</td>${avecRub?`<td>${esc(o.rubrique)}</td>`:''}<td class="n">${o.montant<0?e2(-o.montant):''}</td><td class="n">${o.montant>0?e2(o.montant):''}</td>${suivi?`<td class="n">${e2(solde)||'0,00 €'}</td>`:''}</tr>`}).join('');
   const nc=4+(avecRub?1:0)+(suivi?1:0),col=avecRub?3:2;
-  return `<div class="sec"><div class="hd"><div><h1>Relevé de compte · ${esc(c.nom)}</h1><div>${esc(c.banque||'')} · ${esc(c.id)}</div></div>
+  return `<div class="sec"><div class="hd"><div><h1>Relevé de compte · ${esc(c.nom)}</h1><div>${titulaire(cid)?`Titulaire : <b>${esc(titulaire(cid))}</b><br>`:''}${esc(c.banque||'')} · ${esc(c.id)}</div></div>
     <div class="meta">Du <b>${fdate(du)}</b> au <b>${fdate(au)}</b><br>Édité le ${fdate(today())} · ${ops.length} opération${ops.length>1?'s':''}</div></div>
     <table><thead><tr><th style="width:68px">Date</th><th>Libellé</th>${avecRub?'<th style="width:130px">Rubrique</th>':''}<th style="width:80px">Débit</th><th style="width:80px">Crédit</th>${suivi?'<th style="width:85px">Solde</th>':''}</tr></thead><tbody>
     ${suivi?`<tr class="s"><td colspan="${nc-1}">Solde au ${fdate(du)}</td><td class="n">${e2(soldeAvant(cid,du))||'0,00 €'}</td></tr>`:''}
@@ -765,19 +766,44 @@ function detecte(rows){
   for(let h=0;h<Math.min(rows.length,40);h++){
     const H=(rows[h]||[]).map(c=>norm(c));
     const find=(re,not)=>H.findIndex(c=>re.test(c)&&!(not&&not.test(c)));
-    const iDate=[/^date (d.)?operation$/,/^date (de l.)?operation$/,/^date$/,/^date op/,/date de comptabilisation/,/^date/].map(r=>find(r,/valeur/)).find(i=>i>=0);
-    let iLib=find(/libell/,/date|type|simplifi|categorie/);if(iLib<0)iLib=find(/description|nature|operation$/,/date|type|simplifi|categorie/);
-    const iDeb=find(/debit/),iCre=find(/credit/),iMt=find(/^montant|montant/);
+    const iDate=[/^date (d.)?operation$/,/^date (de l.)?operation$/,/^date$/,/^date op/,/^dateop$/,/date de comptabilisation/,/^booking date/,/^completed date/,/^date/].map(r=>find(r,/valeur|value|dateval/)).find(i=>i>=0);
+    let iLib=find(/libell/,/date|type|simplifi|categorie/);if(iLib<0)iLib=find(/^label$|description|^payee|partner name|beneficiaire|nature|operation$/,/date|type|simplifi|categorie/);
+    const iDeb=find(/debit/),iCre=find(/credit/);let iMt=find(/^montant|montant|^amount/,/francs|fee/);
+    const sol=H.map((c,i)=>/^solde/.test(c)?i:-1).filter(i=>i>=0);let iSol=sol[0]??-1;
+    if(iMt<0&&iDeb<0&&iCre<0&&sol.length===2){iMt=sol[0];iSol=sol[1]} // Boursobank : 1er « Solde » = montant, 2e = solde
     if(iDate==null||iDate<0||(iDeb<0&&iCre<0&&iMt<0))continue;
     const iSimp=find(/libelle simplifie/),iOper=find(/libelle operation/),iRef=find(/^reference/),iInfo=find(/informations complementaires/);
     if(iLib<0&&iSimp<0)continue;
-    const banque=H.some(c=>/libelle simplifie/.test(c))&&H.some(c=>/date de comptabilisation/.test(c))?'bp':H.some(c=>/categorie operation/.test(c))&&H.some(c=>/montant operation/.test(c))?'bnp':null;
-    return {h,banque,iDate,iDv:find(/valeur/),iLib,iDeb,iCre,iMt,iSolde:find(/^solde/),iSimp,iOper,iRef,iInfo,iType:find(/type operation/)};
+    const has=re=>H.some(c=>re.test(c));
+    const banque=has(/libelle simplifie/)&&has(/date de comptabilisation/)?'bp':has(/categorie operation/)&&has(/montant operation/)?'bnp':has(/montant\(euros\)/)?'lbp':has(/detail de l.ecriture/)?'sg':has(/^dateop$/)||has(/^supplierfound$/)?'bourso':null;
+    return {h,banque,iDate,iDv:find(/valeur|^dateval/),iLib,iDet:find(/^detail/),iDeb,iCre,iMt,iSolde:iSol,iSimp,iOper,iRef,iInfo,iType:find(/type operation/)};
   }
   return null;
 }
+function lireOFX(text,nom){
+  const tag=(b,t)=>{const m=b.match(new RegExp('<'+t+'>([^<\\r\\n]*)','i'));return m?m[1].trim():''};
+  const dt=v=>v&&v.length>=8?`${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}`:null;
+  const lines=[];
+  for(const b of text.split(/<STMTTRN>/i).slice(1)){const date=dt(tag(b,'DTPOSTED'));const mt=pNum(tag(b,'TRNAMT'));if(!date||mt==null)continue;
+    const nm=tag(b,'NAME'),memo=tag(b,'MEMO');const lib=(!memo?nm:!nm?memo:memo.includes(nm)?memo:nm.includes(memo)?nm:nm+' '+memo).replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
+    lines.push({date,dv:null,lib,mt:Math.round(mt*100)/100,solde:null,type:norm(tag(b,'TRNTYPE'))})}
+  const lb=text.split(/<LEDGERBAL>/i)[1],soldeFin=lb&&pNum(tag(lb,'BALAMT'))!=null?{date:dt(tag(lb,'DTASOF'))||lines.reduce((m,l)=>l.date>m?l.date:m,''),solde:pNum(tag(lb,'BALAMT'))}:null;
+  return lines.length?[{nom,lines,soldeFin,banque:null}]:[];
+}
+function lireQIF(text,nom){
+  const lines=[];let cur={};
+  for(const raw of text.split(/\r?\n/)){const c=raw[0],v=raw.slice(1).trim();
+    if(c==='D'){const m=v.replace(/'/g,'/').match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);if(m){let y=+m[3];if(y<100)y+=2000;cur.date=`${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`}}
+    else if(c==='T'||c==='U')cur.mt=pNum(v);else if(c==='P')cur.p=v;else if(c==='M')cur.m=v;
+    else if(c==='^'){if(cur.date&&cur.mt!=null)lines.push({date:cur.date,dv:null,lib:[cur.p,cur.m].filter(Boolean).join(' ').replace(/\s+/g,' '),mt:Math.round(cur.mt*100)/100,solde:null,type:''});cur={}}}
+  return lines.length?[{nom,lines,soldeFin:null,banque:null}]:[];
+}
 async function lireFichier(file){
   let sheets=[];
+  if(/\.(ofx|qfx|qif)$/i.test(file.name)){
+    const buf=await file.arrayBuffer();let text=new TextDecoder('utf-8').decode(buf);if(text.includes('\uFFFD'))text=new TextDecoder('windows-1252').decode(buf);
+    return /\.qif$/i.test(file.name)?lireQIF(text,file.name):lireOFX(text,file.name);
+  }
   if(/\.(csv|txt)$/i.test(file.name)){
     const buf=await file.arrayBuffer();let text=new TextDecoder('utf-8').decode(buf);if(text.includes('\uFFFD'))text=new TextDecoder('windows-1252').decode(buf);
     sheets=[{nom:file.name,rows:parseCSV(text.replace(/^\uFEFF/,''))}];
@@ -795,7 +821,7 @@ async function lireFichier(file){
       if(mt==null){const db=pNum(R[d.iDeb]),cr=pNum(R[d.iCre]);if(db==null&&cr==null)continue;mt=(cr?Math.abs(cr):0)-(db?Math.abs(db):0)}
       let lib;
       if(d.iSimp>=0&&d.iOper>=0){lib=[R[d.iSimp],R[d.iOper],R[d.iRef],R[d.iInfo]].map(x=>x==null?'':String(x).trim()).join(':').replace(/:{2,}/g,':').replace(/:+$/,'')}
-      else lib=String(R[d.iLib]??'').trim();
+      else{lib=String(R[d.iLib]??'').trim();if(d.iDet>=0&&R[d.iDet]){const det=String(R[d.iDet]).trim();lib=det.toLowerCase().includes(lib.toLowerCase())?det:(lib+' '+det).trim()}}
       lines.push({date,dv:d.iDv>=0?pDate(R[d.iDv]):null,lib:lib.replace(/\s+/g,' '),mt:Math.round(mt*100)/100,solde:d.iSolde>=0?pNum(R[d.iSolde]):null,type:d.iType>=0?norm(R[d.iType]):''});
     }
     // ligne de résumé avant l'en-tête (BNP : type de compte ; n° masqué ; date ; solde)
@@ -811,13 +837,13 @@ function vImport(){
   if(!D.comptes.length){$('#view').innerHTML='<div class="empty"><b>Aucun compte</b>Crée d\'abord tes comptes dans « Comptes & réglages » (ou importe ton classeur Excel).</div>';return}
   $('#view').innerHTML=`<div class="box">
     <div class="filters" style="margin:0 0 12px"><label>Compte : <select class="f" id="iC">${D.comptes.map(c=>`<option value="${c.id}" ${IMP?.compte===c.id?'selected':''}>${esc(c.nom)}</option>`).join('')}</select></label></div>
-    <div class="drop" id="iDrop">📥 Dépose ici le relevé téléchargé sur le site de ta banque<br><span style="font-size:13px">Crédit Mutuel (.xlsx), Banque Populaire (.csv), BNP Paribas (.csv), ou tout fichier Excel/CSV avec Date, Libellé, Débit/Crédit ou Montant</span>
-      <input type="file" id="iFile" accept=".xlsx,.xls,.csv,.txt" hidden></div>
+    <div class="drop" id="iDrop">📥 Dépose ici le relevé téléchargé sur le site de ta banque<br><span style="font-size:13px">Excel, CSV ou OFX de ta banque : Crédit Mutuel, CIC, Banque Populaire, Caisse d'Épargne, BNP, Hello bank!, Société Générale, Crédit Agricole, La Banque Postale, LCL, Boursobank, Fortuneo…</span>
+      <input type="file" id="iFile" accept=".xlsx,.xls,.csv,.txt,.ofx,.qfx,.qif" hidden></div>
     <div id="iRes"></div></div>
   <div class="box" style="margin-top:16px"><h3 style="margin:0 0 6px">🔍 Vérifier les soldes avec mes relevés de banque</h3>
     <p class="muted" style="margin:0 0 10px;font-size:13.5px">Choisis le dossier où tu ranges tes relevés téléchargés (Excel ou CSV avec une colonne Solde). Pour chaque jour, je compare le solde de la banque avec celui de l'appli et je te montre où un écart apparaît. Rien n'est modifié.</p>
     <button class="btn pri" id="vDir">📁 Choisir un dossier</button> <button class="btn" id="vFic">📄 Choisir des fichiers</button>
-    <input type="file" id="vDirIn" webkitdirectory multiple hidden><input type="file" id="vFicIn" accept=".xlsx,.xls,.csv,.txt" multiple hidden>
+    <input type="file" id="vDirIn" webkitdirectory multiple hidden><input type="file" id="vFicIn" accept=".xlsx,.xls,.csv,.txt,.ofx,.qfx,.qif" multiple hidden>
     <div id="vRes"></div></div>
   <div class="box" style="margin-top:16px"><h3 style="margin:0 0 6px">↩ Derniers imports</h3>
     <p class="muted" style="margin:0 0 10px;font-size:13.5px">Chaque enregistrement fait depuis « Importer un relevé ». Tu peux en annuler un : ses opérations sont supprimées, le reste ne bouge pas.</p>
@@ -864,7 +890,7 @@ function bindHisto(){
 }
 /* ---- vérification des soldes avec les relevés ---- */
 async function verifSoldes(files){
-  files=files.filter(f=>/\.(xlsx|xls|csv|txt)$/i.test(f.name)&&!f.name.startsWith('~$')).sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name));
+  files=files.filter(f=>/\.(xlsx|xls|csv|txt|ofx|qfx|qif)$/i.test(f.name)&&!f.name.startsWith('~$')).sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name));
   const out=$('#vRes');
   if(!files.length){out.innerHTML='<p class="neg">Aucun fichier Excel ou CSV dans ce choix. (Les relevés PDF ne sont pas lus ici.)</p>';return}
   const res=[];let n=0;
@@ -971,8 +997,8 @@ function impVisible(l){
   if(f.mois&&l.date.slice(5,7)!==f.mois)return false;
   return true;
 }
-const BANQUES={cm:'Crédit Mutuel',bp:'Banque Populaire',bnp:'BNP Paribas'};
-function banqueDuCompte(c){const n=norm((c?.banque||'')+' '+(c?.nom||''));return /credit mutuel|\bcm\b|\bcic\b/.test(n)?'cm':/populaire|\bbp\b|bpce|caisse d.epargne/.test(n)?'bp':/bnp|hello ?bank/.test(n)?'bnp':null}
+const BANQUES={cm:'Crédit Mutuel / CIC',bp:'Banque Populaire / Caisse d\'Épargne',bnp:'BNP Paribas / Hello bank!',lbp:'La Banque Postale',sg:'Société Générale',bourso:'Boursobank'};
+function banqueDuCompte(c){const n=norm((c?.banque||'')+' '+(c?.nom||''));return /credit mutuel|\bcm\b|\bcic\b/.test(n)?'cm':/populaire|\bbp\b|bpce|caisse d.epargne/.test(n)?'bp':/bnp|hello ?bank/.test(n)?'bnp':/banque postale|\blbp\b/.test(n)?'lbp':/societe generale|\bsg\b/.test(n)?'sg':/bourso/.test(n)?'bourso':null}
 function controleCompte(){ // le fichier correspond-il au compte choisi ?
   const t=IMP.tabs[IMP.tab],k=new Set(t.lines.map(l=>l.date+'|'+cents(l.mt))),sc={};
   for(const o of D.ops)if(k.has(o.date+'|'+cents(o.montant)))sc[o.compte]=(sc[o.compte]||0)+1;
@@ -1453,7 +1479,7 @@ function vD2072(){
 }
 
 /* =================== comptes & réglages =================== */
-const LISTE_BANQUES=[['Crédit Mutuel',1],['Banque Populaire',1],['BNP Paribas',1],['CIC',0],['Crédit Agricole',0],['Société Générale',0],['LCL',0],['La Banque Postale',0],['Caisse d\'Épargne',0],['Boursobank',0],['Hello bank!',0],['Fortuneo',0],['Autre',0]];
+const LISTE_BANQUES=[['Crédit Mutuel',1],['Banque Populaire',1],['BNP Paribas',1],['CIC',1],['Crédit Agricole',1],['Société Générale',1],['LCL','OFX'],['La Banque Postale',1],['Caisse d\'Épargne',1],['Boursobank',1],['Hello bank!',1],['Fortuneo',1],['Autre','OFX']];
 function nouveauCode(){let n=1;const ids=new Set(D.comptes.map(c=>c.id));while(ids.has('CPT'+n))n++;return 'CPT'+n}
 function vReglages(){
   const ds=dossier(),inf=ds.infos||{};
@@ -1461,25 +1487,27 @@ function vReglages(){
    <div class="filters" style="margin:0"><label>Nom <input class="f" id="dNom" value="${esc(ds.nom)}"></label>
    <label>Type <select class="f" id="dType"><option value="perso" ${ds.type==='perso'?'selected':''}>🏠 Perso</option><option value="sci" ${ds.type==='sci'?'selected':''}>🏢 SCI</option><option value="gestion" ${ds.type==='gestion'?'selected':''}>👵 Gestion pour un proche</option></select></label>
    ${ds.id!=='perso'?'<button class="btn dan" id="dDel" style="margin-left:auto">Supprimer ce dossier</button>':''}</div>
+   <div class="filters" style="margin:10px 0 0"><label>Titulaire(s) des comptes <input class="f" data-inf="titulaires" value="${esc(inf.titulaires||'')}" placeholder="ex. M. ou Mme Gérard GIRARDEAU" style="width:340px"></label>
+   <span class="muted" style="font-size:12.5px">Nom par défaut de chaque compte ci-dessous ; tu peux le préciser compte par compte. Il apparaît sur les relevés imprimés.</span></div>
    ${ds.type==='sci'?`<h2 style="margin-top:16px">Coordonnées de la SCI (pour les quittances)</h2><div class="form" id="dInf" style="grid-template-columns:1fr 1fr">
      <label>Raison sociale<input data-inf="raison" value="${esc(inf.raison||ds.nom)}"></label><label>N° SIREN<input data-inf="siren" value="${esc(inf.siren||'')}"></label>
      <label class="full">Adresse du siège<input data-inf="siege" value="${esc(inf.siege||'')}"></label>
      <label>Gérant(e)<input data-inf="gerant" value="${esc(inf.gerant||'')}"></label><label>Ville (pour « Fait à… »)<input data-inf="ville" value="${esc(inf.ville||'')}"></label>
      <label class="full" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" data-inf="tva" ${inf.tva!==false?'checked':''} style="width:auto"> La SCI a opté pour la TVA sur les loyers</label></div>`:''}</div>`)+`<div class="box"><h2>Mes comptes</h2>
-   <div class="tw" style="box-shadow:none"><table><thead><tr><th>Code</th><th>Nom</th><th>Banque</th><th class="num">Solde de départ</th><th>Suivre le solde</th><th class="num">Ordre</th><th class="num">Solde actuel</th></tr></thead><tbody>
-   ${D.comptes.map(c=>`<tr><td><b>${esc(c.id)}</b></td><td><input class="in" data-c="${c.id}" data-k="nom" value="${esc(c.nom)}"></td><td><select class="in" data-c="${c.id}" data-k="banque">${[...new Set([c.banque||'',...LISTE_BANQUES.map(b=>b[0])])].map(b=>`<option ${b===(c.banque||'')?'selected':''}>${esc(b)}</option>`).join('')}</select></td>
+   <div class="tw" style="box-shadow:none"><table><thead><tr><th>Code</th><th>Nom</th><th>Titulaire</th><th>Banque</th><th class="num">Solde de départ</th><th>Suivre le solde</th><th class="num">Ordre</th><th class="num">Solde actuel</th></tr></thead><tbody>
+   ${D.comptes.map(c=>`<tr><td><b>${esc(c.id)}</b></td><td><input class="in" data-c="${c.id}" data-k="nom" value="${esc(c.nom)}"></td><td><input class="in" data-tit="${c.id}" value="${esc((inf.tit||{})[c.id]||'')}" placeholder="${esc(inf.titulaires||'Titulaire')}"></td><td><select class="in" data-c="${c.id}" data-k="banque">${[...new Set([c.banque||'',...LISTE_BANQUES.map(b=>b[0])])].map(b=>`<option ${b===(c.banque||'')?'selected':''}>${esc(b)}</option>`).join('')}</select></td>
      <td><input class="in num" data-c="${c.id}" data-k="solde_initial" value="${c.solde_initial}" style="width:110px"></td><td><input type="checkbox" data-c="${c.id}" data-k="suivi_solde" ${c.suivi_solde?'checked':''}></td>
      <td><input class="in num" data-c="${c.id}" data-k="ordre" value="${c.ordre}" style="width:50px"></td><td class="num">${c.suivi_solde?eur(soldeActuel(c.id)):'<span class="muted">carte</span>'}</td></tr>`).join('')}
    </tbody></table></div>
    <h3 style="margin:16px 0 6px">Nouveau compte</h3>
    <form class="filters" id="cF" style="margin:0;flex-wrap:wrap;gap:10px;align-items:flex-end">
      <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Code<input class="f" name="id" value="${nouveauCode()}" readonly style="width:90px;font-weight:700;background:var(--zebra)"></label>
-     <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Banque<select class="f" name="banque" required><option value="">— choisir —</option>${LISTE_BANQUES.map(([n,ok])=>`<option value="${esc(n)}">${esc(n)}${ok?' ✓ import':''}</option>`).join('')}</select></label>
+     <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Banque<select class="f" name="banque" required><option value="">— choisir —</option>${LISTE_BANQUES.map(([n,ok])=>`<option value="${esc(n)}">${esc(n)}${ok===1?' ✓ import':ok?' ✓ import (format OFX)':''}</option>`).join('')}</select></label>
      <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Nom du compte<input class="f" name="nom" placeholder="ex. BNP COMPTE JOINT" style="width:220px"></label>
      <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Type<select class="f" name="type"><option value="courant">Compte courant (solde suivi)</option><option value="carte">Carte à débit différé</option><option value="epargne">Livret / épargne (solde suivi)</option></select></label>
      <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Solde de départ (€)<input class="f num" name="solde" placeholder="0,00" inputmode="decimal" style="width:120px"></label>
      <button class="btn pri">＋ Ajouter le compte</button></form>
-   <p class="muted" style="font-size:12.5px;margin:6px 0 0">Le <b>solde de départ</b> est le solde du compte <b>juste avant</b> la première opération que tu vas importer (lis-le sur le relevé : « ancien solde »). « ✓ import » : banques dont je sais lire le fichier d'opérations ; pour les autres, un export Excel/CSV avec Date, Libellé, Montant fonctionne en général.</p>
+   <p class="muted" style="font-size:12.5px;margin:6px 0 0">Le <b>solde de départ</b> est le solde du compte <b>juste avant</b> la première opération que tu vas importer (lis-le sur le relevé : « ancien solde »). Pour l'import : choisis l'export <b>CSV</b> (ou Excel) sur le site de la banque ; si la banque n'en propose pas ou que la lecture échoue, prends le format <b>OFX</b> (« Money »), que toutes les banques proposent et qui contient aussi le solde.</p>
    <p class="muted" style="font-size:13px;margin:8px 0 0">« Suivre le solde » : décoche pour les cartes à débit différé (leur total arrive sur le compte courant).</p></div>
   <div class="box"><h2>Reprendre un classeur Excel (GGI) dans « ${esc(dossier().nom)} »</h2>
    <p style="margin-top:0">Dépose le classeur de ce dossier (<b>B-GGIV4</b>, <b>B-MAXETLILIV4</b>, <b>B-MAMIEV3</b>…) : je reprends les comptes (feuille BANQUE), toutes les opérations (CPT1, CPT2…), les rubriques (RUBRIQUE), les règles de classement (BDD), l'épargne (EPARGNE) et les chèques (CHEQUE…).</p>
@@ -1493,6 +1521,7 @@ function vReglages(){
   const saveD=async patch=>{try{chk(await sb.from('cpt_dossiers').update(patch).eq('id',ds.id),'dossier');Object.assign(ds,patch);majDossierUI();toast('Dossier enregistré');vReglages()}catch(e){toast('Erreur : '+e.message)}};
   if($('#dNom'))$('#dNom').onchange=e=>e.target.value.trim()&&saveD({nom:e.target.value.trim()});
   if($('#dType'))$('#dType').onchange=async e=>{await saveD({type:e.target.value});await changerDossier(CUR);go('reglages')};
+  $('#view').querySelectorAll('[data-tit]').forEach(i=>i.onchange=()=>{const t={...((ds.infos||{}).tit||{})};const v=i.value.trim();if(v)t[i.dataset.tit]=v;else delete t[i.dataset.tit];saveD({infos:{...(ds.infos||{}),tit:t}})});
   $('#view').querySelectorAll('[data-inf]').forEach(i=>i.onchange=()=>saveD({infos:{...(ds.infos||{}),[i.dataset.inf]:i.type==='checkbox'?i.checked:i.value.trim()}}));
   if($('#dDel'))$('#dDel').onclick=async()=>{
     if(prompt(`Supprimer le dossier « ${ds.nom} » et TOUTES ses données (opérations, règles, rubriques…) ?\nTape SUPPRIMER pour confirmer.`)!=='SUPPRIMER')return;
