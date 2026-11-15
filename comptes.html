@@ -771,7 +771,8 @@ function detecte(rows){
     if(iDate==null||iDate<0||(iDeb<0&&iCre<0&&iMt<0))continue;
     const iSimp=find(/libelle simplifie/),iOper=find(/libelle operation/),iRef=find(/^reference/),iInfo=find(/informations complementaires/);
     if(iLib<0&&iSimp<0)continue;
-    return {h,iDate,iDv:find(/valeur/),iLib,iDeb,iCre,iMt,iSolde:find(/^solde/),iSimp,iOper,iRef,iInfo,iType:find(/type operation/)};
+    const banque=H.some(c=>/libelle simplifie/.test(c))&&H.some(c=>/date de comptabilisation/.test(c))?'bp':H.some(c=>/categorie operation/.test(c))&&H.some(c=>/montant operation/.test(c))?'bnp':null;
+    return {h,banque,iDate,iDv:find(/valeur/),iLib,iDeb,iCre,iMt,iSolde:find(/^solde/),iSimp,iOper,iRef,iInfo,iType:find(/type operation/)};
   }
   return null;
 }
@@ -801,7 +802,8 @@ async function lireFichier(file){
     let soldeFin=null;
     for(let r=0;r<d.h;r++){const R=(s.rows[r]||[]).filter(c=>c!=null&&String(c).trim()!=='');const di=R.findIndex(c=>pDate(c));if(di<0)continue;
       const n=R.slice(di+1).map(pNum).filter(x=>x!=null);if(n.length){soldeFin={date:pDate(R[di]),solde:n[n.length-1]};break}}
-    if(lines.length)res.push({nom:s.nom,lines,soldeFin});
+    const banque=d.banque||(/^cpt \d{5}/i.test(s.nom)?'cm':null);
+    if(lines.length)res.push({nom:s.nom,lines,soldeFin,banque});
   }
   return res;
 }
@@ -809,7 +811,7 @@ function vImport(){
   if(!D.comptes.length){$('#view').innerHTML='<div class="empty"><b>Aucun compte</b>Crée d\'abord tes comptes dans « Comptes & réglages » (ou importe ton classeur Excel).</div>';return}
   $('#view').innerHTML=`<div class="box">
     <div class="filters" style="margin:0 0 12px"><label>Compte : <select class="f" id="iC">${D.comptes.map(c=>`<option value="${c.id}" ${IMP?.compte===c.id?'selected':''}>${esc(c.nom)}</option>`).join('')}</select></label></div>
-    <div class="drop" id="iDrop">📥 Dépose ici le relevé téléchargé sur le site de ta banque<br><span style="font-size:13px">Crédit Mutuel (.xlsx), Banque Populaire (.csv), ou tout fichier Excel/CSV avec Date, Libellé, Débit/Crédit ou Montant</span>
+    <div class="drop" id="iDrop">📥 Dépose ici le relevé téléchargé sur le site de ta banque<br><span style="font-size:13px">Crédit Mutuel (.xlsx), Banque Populaire (.csv), BNP Paribas (.csv), ou tout fichier Excel/CSV avec Date, Libellé, Débit/Crédit ou Montant</span>
       <input type="file" id="iFile" accept=".xlsx,.xls,.csv,.txt" hidden></div>
     <div id="iRes"></div></div>
   <div class="box" style="margin-top:16px"><h3 style="margin:0 0 6px">🔍 Vérifier les soldes avec mes relevés de banque</h3>
@@ -969,6 +971,17 @@ function impVisible(l){
   if(f.mois&&l.date.slice(5,7)!==f.mois)return false;
   return true;
 }
+const BANQUES={cm:'Crédit Mutuel',bp:'Banque Populaire',bnp:'BNP Paribas'};
+function banqueDuCompte(c){const n=norm(c?.nom||'');return /credit mutuel|\bcm\b|\bcic\b/.test(n)?'cm':/populaire|\bbp\b|bpce|caisse d.epargne/.test(n)?'bp':/bnp|hello ?bank/.test(n)?'bnp':null}
+function controleCompte(){ // le fichier correspond-il au compte choisi ?
+  const t=IMP.tabs[IMP.tab],k=new Set(t.lines.map(l=>l.date+'|'+cents(l.mt))),sc={};
+  for(const o of D.ops)if(k.has(o.date+'|'+cents(o.montant)))sc[o.compte]=(sc[o.compte]||0)+1;
+  const ch=IMP.compte,mon=sc[ch]||0,best=Object.keys(sc).sort((a,b)=>sc[b]-sc[a])[0];
+  const bF=t.banque,bC=banqueDuCompte(compte(ch));
+  if(best&&best!==ch&&sc[best]>=3&&sc[best]>=2*mon+2)return {alerte:`Ce fichier ressemble au compte <b>${esc(cNom(best))}</b> : ${sc[best]} opérations identiques (même date, même montant), contre ${mon} avec <b>${esc(cNom(ch))}</b>.`,vers:best};
+  if(bF&&bC&&bF!==bC){const alt=D.comptes.find(c=>c.suivi_solde&&banqueDuCompte(c)===bF);return {alerte:`Ce fichier est un export <b>${BANQUES[bF]}</b>, mais le compte choisi est <b>${esc(cNom(ch))}</b> (${BANQUES[bC]}).`,vers:alt?.id}}
+  return {ok:bF||mon?`✓ ${bF?'Export '+BANQUES[bF]:''}${bF&&mon?' · ':''}${mon?mon+' opération(s) en commun avec ce compte':''}`:''};
+}
 function renderImport0(){
   IMP.f=IMP.f||{q:'',etat:'',rub:'',an:'',mois:''};const F=IMP.f;
   const L=IMP.lines,nAv=L.filter(l=>l.why==='avant le début du compte').length,nN=L.filter(l=>!l.dbl).length,nD=L.length-nN,nC=L.filter(l=>l.ok&&!rubOf(l.rub)).length;
@@ -979,7 +992,10 @@ function renderImport0(){
     const ecart=Math.round((final-last.solde)*100)/100;
     soldeMsg=Math.abs(ecart)<0.01?`<span class="badge b-ok">✓ Solde final ${eur(final)} identique au relevé</span>`:`<span class="badge b-warn">⚠ Solde après import ${eur(final)} ≠ relevé ${eur(last.solde)} (écart ${eur(ecart)})</span>`;
   }
+  const CC=IMP.cc=controleCompte();
   $('#iRes').innerHTML=`
+  ${CC.alerte?`<div class="box" style="margin:12px 0;border:2px solid var(--danger);background:color-mix(in srgb,var(--danger) 10%,var(--panel));box-shadow:none">⚠ <b>Attention, ce n'est peut-être pas le bon compte.</b><br>${CC.alerte}
+    ${CC.vers?`<br><button class="btn pri" id="iVers" style="margin-top:8px">Passer sur ${esc(cNom(CC.vers))}</button>`:''}</div>`:CC.ok?`<p class="muted" style="margin:10px 0 0;font-size:13px">${CC.ok}</p>`:''}
   ${IMP.tabs.length>1?`<p>Feuille : <select class="f" id="iTab">${IMP.tabs.map((t,i)=>`<option value="${i}" ${i===IMP.tab?'selected':''}>${esc(t.nom)} (${t.lines.length} lignes)</option>`).join('')}</select></p>`:''}
   <p style="margin:14px 0 8px"><b>${esc(IMP.file)}</b> · du ${fdate(L[0]?.date)} au ${fdate(L[L.length-1]?.date)} · <span class="badge b-ok">${nN} nouvelle(s)</span> <span class="badge b-grey">${nD-nAv} déjà enregistrée(s)</span> ${nAv?`<span class="badge b-grey">${nAv} avant le début du compte</span>`:''} ${nC?`<span class="badge b-warn">${nC} à classer</span>`:''} ${soldeMsg}</p>
   ${(()=>{const rubs=[...new Set(L.map(l=>rubOf(l.rub)?.nom).filter(Boolean))].sort();const ans=[...new Set(L.map(l=>l.date.slice(0,4)))].sort(),vis=L.filter(impVisible).length,filt=F.q||F.etat||F.rub||F.an||F.mois;
@@ -1019,7 +1035,8 @@ function renderImport0(){
     renderImport();
   });
   $('#iRes').querySelectorAll('.rubbtn[data-ib]').forEach(b=>b.onclick=()=>{const l=L[+b.dataset.ib];pickRub(b,l.rub,v=>setRub(l,v),l.mt)});
-  $('#iSave').onclick=enregistreImport;
+  $('#iSave').onclick=()=>{if(IMP.cc?.alerte&&!confirm(`Ce fichier ne semble pas correspondre au compte ${cNom(IMP.compte)}.\n\nEnregistrer quand même dans ce compte ?`))return;enregistreImport()};
+  if($('#iVers'))$('#iVers').onclick=()=>{IMP.compte=IMP.cc.vers;$('#iC').value=IMP.compte;prepImport()};
 }
 async function enregistreImport(){
   const L=IMP.lines.filter(l=>l.ok);if(!L.length)return;
