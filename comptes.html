@@ -739,7 +739,7 @@ function releveHTML(cid,du,au,avecRub){
 /* =================== import d'un relevé =================== */
 let IMP=null;
 function parseCSV(text){
-  const first=text.split(/\r?\n/,1)[0],dl=[';',',','\t'].sort((a,b)=>first.split(b).length-first.split(a).length)[0];
+  const first=text.split(/\r?\n/).filter(l=>l.trim()).slice(0,12).join('\n'),dl=[';','\t',','].sort((a,b)=>first.split(b).length-first.split(a).length)[0];
   const rows=[];let row=[],cell='',q=false;
   for(let i=0;i<text.length;i++){const c=text[i];
     if(q){if(c==='"'){if(text[i+1]==='"'){cell+='"';i++}else q=false}else cell+=c}
@@ -766,7 +766,7 @@ function detecte(rows){
     const H=(rows[h]||[]).map(c=>norm(c));
     const find=(re,not)=>H.findIndex(c=>re.test(c)&&!(not&&not.test(c)));
     const iDate=[/^date (d.)?operation$/,/^date (de l.)?operation$/,/^date$/,/^date op/,/date de comptabilisation/,/^date/].map(r=>find(r,/valeur/)).find(i=>i>=0);
-    const iLib=find(/libell|description|nature|operation$/,/date|type|simplifi/);
+    let iLib=find(/libell/,/date|type|simplifi|categorie/);if(iLib<0)iLib=find(/description|nature|operation$/,/date|type|simplifi|categorie/);
     const iDeb=find(/debit/),iCre=find(/credit/),iMt=find(/^montant|montant/);
     if(iDate==null||iDate<0||(iDeb<0&&iCre<0&&iMt<0))continue;
     const iSimp=find(/libelle simplifie/),iOper=find(/libelle operation/),iRef=find(/^reference/),iInfo=find(/informations complementaires/);
@@ -797,7 +797,11 @@ async function lireFichier(file){
       else lib=String(R[d.iLib]??'').trim();
       lines.push({date,dv:d.iDv>=0?pDate(R[d.iDv]):null,lib:lib.replace(/\s+/g,' '),mt:Math.round(mt*100)/100,solde:d.iSolde>=0?pNum(R[d.iSolde]):null,type:d.iType>=0?norm(R[d.iType]):''});
     }
-    if(lines.length)res.push({nom:s.nom,lines});
+    // ligne de résumé avant l'en-tête (BNP : type de compte ; n° masqué ; date ; solde)
+    let soldeFin=null;
+    for(let r=0;r<d.h;r++){const R=(s.rows[r]||[]).filter(c=>c!=null&&String(c).trim()!=='');const di=R.findIndex(c=>pDate(c));if(di<0)continue;
+      const n=R.slice(di+1).map(pNum).filter(x=>x!=null);if(n.length){soldeFin={date:pDate(R[di]),solde:n[n.length-1]};break}}
+    if(lines.length)res.push({nom:s.nom,lines,soldeFin});
   }
   return res;
 }
@@ -866,7 +870,7 @@ async function verifSoldes(files){
     out.innerHTML=`<p class="muted">Lecture ${++n}/${files.length} : ${esc(f.name)}…</p>`;
     let tabs;try{tabs=await lireFichier(f)}catch(e){res.push({f:f.name,err:'illisible'});continue}
     if(!tabs.length){res.push({f:f.name,err:"pas de tableau d'opérations"});continue}
-    for(const t of tabs)res.push(verifUn(f.name+(tabs.length>1?' · '+t.nom:''),t.lines));
+    for(const t of tabs)res.push(verifUn(f.name+(tabs.length>1?' · '+t.nom:''),t.lines,t.soldeFin));
   }
   const ok=res.filter(r=>r.etat==='ok').length,ko=res.filter(r=>r.etat==='ko').length;
   out.innerHTML=`<p style="margin:14px 0 8px"><b>${res.length} relevé(s)</b> · <span class="badge b-ok">${ok} juste(s)</span> ${ko?`<span class="badge b-warn">${ko} avec écart</span>`:''} ${res.length-ok-ko?`<span class="badge b-grey">${res.length-ok-ko} non vérifiable(s)</span>`:''}</p>
@@ -875,16 +879,16 @@ async function verifSoldes(files){
     <td class="num">${r.nb??''}</td><td class="num">${r.sb!=null?eur(r.sb):''}</td><td class="num">${r.sa!=null?eur(r.sa):''}</td><td class="num ${r.etat==='ko'?'neg':''}">${r.etat?eur(r.sa-r.sb):''}</td>
     <td>${r.etat&&r.apres?`<div class="muted" style="font-size:12px">+ ${r.apres} opération(s) après le ${fdate(r.au)}, pas encore importée(s)</div>`:''}${r.etat==='ok'?'<span class="badge b-ok">✓ identique</span>':r.etat==='ko'?`<span class="badge b-warn">⚠ écart depuis le ${fdate(r.det[0].date)}</span>`:`<span class="muted">${esc(r.err)}</span>`}</td></tr>`).join('')}</tbody></table></div>
   ${res.filter(r=>r.etat==='ko').map(r=>`<div class="box" style="margin-top:12px;box-shadow:none"><b>${esc(r.f)}</b> · ${esc(r.c.nom)}
-    ${r.det.slice(0,8).map(d=>`<p style="margin:10px 0 4px">${d.date===r.du?`Dès le premier jour du relevé (<b>${fdate(d.date)}</b>), écart de <b>${eur(d.ecart)}</b> : il vient d'avant ce relevé`:`Le <b>${fdate(d.date)}</b> l'écart passe de ${eur(d.avant)} à <b>${eur(d.ecart)}</b>`} (banque ${eur(d.sb)}, appli ${eur(d.sa)})</p>
+    ${r.det.slice(0,8).map(d=>`<p style="margin:10px 0 4px">${d.seul?`Au <b>${fdate(d.date)}</b>, écart de <b>${eur(d.ecart)}</b>. Ce fichier ne donne que le solde final : pour trouver le jour où ça décroche, compare avec un relevé PDF ou un export Excel jour par jour`:d.date===r.du?`Dès le premier jour du relevé (<b>${fdate(d.date)}</b>), écart de <b>${eur(d.ecart)}</b> : il vient d'avant ce relevé`:`Le <b>${fdate(d.date)}</b> l'écart passe de ${eur(d.avant)} à <b>${eur(d.ecart)}</b>`} (banque ${eur(d.sb)}, appli ${eur(d.sa)})</p>
       ${d.manque.length?`<div style="font-size:13px">Chez la banque mais pas dans l'appli : ${d.manque.map(l=>`<br>• ${esc(l.lib)} <b>${eur(l.mt)}</b>`).join('')}</div>`:''}
       ${d.trop.length?`<div style="font-size:13px">Dans l'appli mais pas chez la banque ce jour-là : ${d.trop.map(o=>`<br>• <span class="clic" ${goA({compte:r.c.id,q:o.libelle})}>${esc(o.libelle)}</span> <b>${eur(o.montant)}</b>`).join('')}</div>`:''}
-      ${!d.manque.length&&!d.trop.length?'<div class="muted" style="font-size:13px">Mêmes montants des deux côtés ce jour-là : l\'écart vient sans doute d\'une date décalée (opération enregistrée un autre jour).</div>':''}`).join('')}
+      ${!d.manque.length&&!d.trop.length&&!d.seul?'<div class="muted" style="font-size:13px">Mêmes montants des deux côtés ce jour-là : l\'écart vient sans doute d\'une date décalée (opération enregistrée un autre jour).</div>':''}`).join('')}
     ${r.det.length>8?`<p class="muted">… et ${r.det.length-8} autre(s) changement(s) d'écart.</p>`:''}</div>`).join('')}`;
 }
-function verifUn(nom,lines){
+function verifUn(nom,lines,sf){
   const L=lines.filter(l=>l.solde!=null);
   if(!lines.length)return {f:nom,err:'aucune opération'};
-  if(!L.length)return {f:nom,err:'pas de colonne Solde dans ce fichier'};
+  if(!L.length&&!sf)return {f:nom,err:'pas de colonne Solde dans ce fichier'};
   // compte : celui qui a le plus d'opérations identiques (date + montant)
   let best=null,bs=-1;
   for(const c of D.comptes){const k=new Set(D.ops.filter(o=>o.compte===c.id).map(o=>o.date+'|'+cents(o.montant)));const sc=lines.filter(l=>k.has(l.date+'|'+cents(l.mt))).length;if(sc>bs){bs=sc;best=c}}
@@ -892,7 +896,14 @@ function verifUn(nom,lines){
   // solde de fin de journée côté banque (ordre du fichier)
   const asc=lines[0].date<=lines[lines.length-1].date,fin=new Map();
   for(const l of L){if(asc||!fin.has(l.date))fin.set(l.date,l.solde)}
-  const last=derniereOp(best.id),toutes=[...fin.keys()].sort(),dates=toutes.filter(d=>d<=last),apres=lines.filter(l=>l.date>last).length,det=[];let prev=0,sb=null,sa=null;
+  const last=derniereOp(best.id),apres=lines.filter(l=>l.date>last).length;
+  if(!L.length){ // seulement le solde du résumé (BNP) : un seul point de contrôle
+    const du=lines.reduce((m,l)=>l.date<m?l.date:m,lines[0].date);
+    if(apres)return {f:nom,c:best,du,au:sf.date,nb:0,apres,err:`${apres} opération(s) pas encore importée(s) : importe-les, puis vérifie à nouveau`};
+    const sa=soldeAvant(best.id,sf.date+'z'),ok=Math.abs(sa-sf.solde)<0.01;
+    return {f:nom,c:best,du,au:sf.date,nb:1,sb:sf.solde,sa,apres:0,etat:ok?'ok':'ko',det:ok?[]:[{date:sf.date,avant:0,ecart:Math.round((sa-sf.solde)*100)/100,sb:sf.solde,sa,manque:[],trop:[],seul:true}]};
+  }
+  const toutes=[...fin.keys()].sort(),dates=toutes.filter(d=>d<=last),det=[];let prev=0,sb=null,sa=null;
   if(!dates.length)return {f:nom,c:best,du:toutes[0],au:toutes[toutes.length-1],nb:0,apres,err:`relevé plus récent que l'appli (dernière opération le ${fdate(last)}) : ${apres} opération(s) à importer`};
   for(const d of dates){
     sb=fin.get(d);sa=soldeAvant(best.id,d+'z');const ec=Math.round((sa-sb)*100)/100;
