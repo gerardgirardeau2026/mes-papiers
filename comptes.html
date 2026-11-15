@@ -972,7 +972,7 @@ function impVisible(l){
   return true;
 }
 const BANQUES={cm:'Crédit Mutuel',bp:'Banque Populaire',bnp:'BNP Paribas'};
-function banqueDuCompte(c){const n=norm(c?.nom||'');return /credit mutuel|\bcm\b|\bcic\b/.test(n)?'cm':/populaire|\bbp\b|bpce|caisse d.epargne/.test(n)?'bp':/bnp|hello ?bank/.test(n)?'bnp':null}
+function banqueDuCompte(c){const n=norm((c?.banque||'')+' '+(c?.nom||''));return /credit mutuel|\bcm\b|\bcic\b/.test(n)?'cm':/populaire|\bbp\b|bpce|caisse d.epargne/.test(n)?'bp':/bnp|hello ?bank/.test(n)?'bnp':null}
 function controleCompte(){ // le fichier correspond-il au compte choisi ?
   const t=IMP.tabs[IMP.tab],k=new Set(t.lines.map(l=>l.date+'|'+cents(l.mt))),sc={};
   for(const o of D.ops)if(k.has(o.date+'|'+cents(o.montant)))sc[o.compte]=(sc[o.compte]||0)+1;
@@ -1453,6 +1453,8 @@ function vD2072(){
 }
 
 /* =================== comptes & réglages =================== */
+const LISTE_BANQUES=[['Crédit Mutuel',1],['Banque Populaire',1],['BNP Paribas',1],['CIC',0],['Crédit Agricole',0],['Société Générale',0],['LCL',0],['La Banque Postale',0],['Caisse d\'Épargne',0],['Boursobank',0],['Hello bank!',0],['Fortuneo',0],['Autre',0]];
+function nouveauCode(){let n=1;const ids=new Set(D.comptes.map(c=>c.id));while(ids.has('CPT'+n))n++;return 'CPT'+n}
 function vReglages(){
   const ds=dossier(),inf=ds.infos||{};
   $('#view').innerHTML=(SANS_DOSSIER?`<div class="box" style="border-color:#efc9b3;background:var(--warn-soft)"><b>Dossiers non activés.</b> Pour gérer plusieurs dossiers (SCI, belle-maman…), exécute le script <b>3-dossiers.sql</b> dans Supabase puis recharge la page.</div>`:`<div class="box"><h2>Dossier</h2>
@@ -1465,11 +1467,19 @@ function vReglages(){
      <label>Gérant(e)<input data-inf="gerant" value="${esc(inf.gerant||'')}"></label><label>Ville (pour « Fait à… »)<input data-inf="ville" value="${esc(inf.ville||'')}"></label>
      <label class="full" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" data-inf="tva" ${inf.tva!==false?'checked':''} style="width:auto"> La SCI a opté pour la TVA sur les loyers</label></div>`:''}</div>`)+`<div class="box"><h2>Mes comptes</h2>
    <div class="tw" style="box-shadow:none"><table><thead><tr><th>Code</th><th>Nom</th><th>Banque</th><th class="num">Solde de départ</th><th>Suivre le solde</th><th class="num">Ordre</th><th class="num">Solde actuel</th></tr></thead><tbody>
-   ${D.comptes.map(c=>`<tr><td><b>${esc(c.id)}</b></td><td><input class="in" data-c="${c.id}" data-k="nom" value="${esc(c.nom)}"></td><td><input class="in" data-c="${c.id}" data-k="banque" value="${esc(c.banque||'')}"></td>
+   ${D.comptes.map(c=>`<tr><td><b>${esc(c.id)}</b></td><td><input class="in" data-c="${c.id}" data-k="nom" value="${esc(c.nom)}"></td><td><select class="in" data-c="${c.id}" data-k="banque">${[...new Set([c.banque||'',...LISTE_BANQUES.map(b=>b[0])])].map(b=>`<option ${b===(c.banque||'')?'selected':''}>${esc(b)}</option>`).join('')}</select></td>
      <td><input class="in num" data-c="${c.id}" data-k="solde_initial" value="${c.solde_initial}" style="width:110px"></td><td><input type="checkbox" data-c="${c.id}" data-k="suivi_solde" ${c.suivi_solde?'checked':''}></td>
      <td><input class="in num" data-c="${c.id}" data-k="ordre" value="${c.ordre}" style="width:50px"></td><td class="num">${c.suivi_solde?eur(soldeActuel(c.id)):'<span class="muted">carte</span>'}</td></tr>`).join('')}
    </tbody></table></div>
-   <form class="filters" id="cF" style="margin:12px 0 0"><input class="f" name="id" placeholder="Code (ex. CPT5)" required style="width:120px"><input class="f" name="nom" placeholder="Nom du compte" required><input class="f" name="banque" placeholder="Banque"><button class="btn">Ajouter un compte</button></form>
+   <h3 style="margin:16px 0 6px">Nouveau compte</h3>
+   <form class="filters" id="cF" style="margin:0;flex-wrap:wrap;gap:10px;align-items:flex-end">
+     <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Code<input class="f" name="id" value="${nouveauCode()}" readonly style="width:90px;font-weight:700;background:var(--zebra)"></label>
+     <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Banque<select class="f" name="banque" required><option value="">— choisir —</option>${LISTE_BANQUES.map(([n,ok])=>`<option value="${esc(n)}">${esc(n)}${ok?' ✓ import':''}</option>`).join('')}</select></label>
+     <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Nom du compte<input class="f" name="nom" placeholder="ex. BNP COMPTE JOINT" style="width:220px"></label>
+     <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Type<select class="f" name="type"><option value="courant">Compte courant (solde suivi)</option><option value="carte">Carte à débit différé</option><option value="epargne">Livret / épargne (solde suivi)</option></select></label>
+     <label style="display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)">Solde de départ (€)<input class="f num" name="solde" placeholder="0,00" inputmode="decimal" style="width:120px"></label>
+     <button class="btn pri">＋ Ajouter le compte</button></form>
+   <p class="muted" style="font-size:12.5px;margin:6px 0 0">Le <b>solde de départ</b> est le solde du compte <b>juste avant</b> la première opération que tu vas importer (lis-le sur le relevé : « ancien solde »). « ✓ import » : banques dont je sais lire le fichier d'opérations ; pour les autres, un export Excel/CSV avec Date, Libellé, Montant fonctionne en général.</p>
    <p class="muted" style="font-size:13px;margin:8px 0 0">« Suivre le solde » : décoche pour les cartes à débit différé (leur total arrive sur le compte courant).</p></div>
   <div class="box"><h2>Reprendre un classeur Excel (GGI) dans « ${esc(dossier().nom)} »</h2>
    <p style="margin-top:0">Dépose le classeur de ce dossier (<b>B-GGIV4</b>, <b>B-MAXETLILIV4</b>, <b>B-MAMIEV3</b>…) : je reprends les comptes (feuille BANQUE), toutes les opérations (CPT1, CPT2…), les rubriques (RUBRIQUE), les règles de classement (BDD), l'épargne (EPARGNE) et les chèques (CHEQUE…).</p>
@@ -1491,7 +1501,12 @@ function vReglages(){
   $('#view').querySelectorAll('[data-c]').forEach(i=>i.onchange=async()=>{
     const c=compte(i.dataset.c),k=i.dataset.k,v=k==='suivi_solde'?i.checked:k==='solde_initial'?(pNum(i.value)||0):k==='ordre'?(parseInt(i.value)||0):i.value.trim();
     try{chk(await T('cpt_comptes').update({[k]:v}).eq('id',c.id),'compte');c[k]=v;index();toast('Compte modifié');vReglages()}catch(e){toast('Erreur : '+e.message)}});
-  $('#cF').onsubmit=async e=>{e.preventDefault();const f=e.target;const v={id:f.id.value.trim().toUpperCase(),nom:f.nom.value.trim(),banque:f.banque.value.trim(),ordre:D.comptes.length+1,solde_initial:0,suivi_solde:true};
+  $('#cF').banque.onchange=e=>{const f=$('#cF');if(!f.nom.value.trim()||f.nom.dataset.auto){f.nom.value=e.target.value.toUpperCase()+(f.type.value==='carte'?' CB':'');f.nom.dataset.auto='1'}};
+  $('#cF').nom.oninput=e=>{delete e.target.dataset.auto};
+  $('#cF').type.onchange=e=>{const f=$('#cF');if(f.nom.dataset.auto&&f.banque.value)f.nom.value=f.banque.value.toUpperCase()+(e.target.value==='carte'?' CB':'')};
+  $('#cF').onsubmit=async e=>{e.preventDefault();const f=e.target;const nom=(f.nom.value.trim()||f.banque.value.toUpperCase());
+    if(D.comptes.some(c=>norm(c.nom)===norm(nom)))return toast('Un compte porte déjà ce nom : précise-le (ex. « '+nom+' JOINT »)');
+    const v={id:nouveauCode(),nom,banque:f.banque.value,ordre:D.comptes.length+1,solde_initial:pNum(f.solde.value)||0,suivi_solde:f.type.value!=='carte'};
     if(compte(v.id))return toast('Ce code existe déjà');try{const {data}=chk(await T('cpt_comptes').insert(v).select(),'compte');D.comptes.push(data[0]);index();vReglages()}catch(err){toast('Erreur : '+err.message)}};
   const dr=$('#xDrop');dr.onclick=()=>$('#xFile').click();$('#xFile').onchange=e=>{if(e.target.files[0])importGGI(e.target.files[0]);e.target.value=''};
   ['dragenter','dragover'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.add('hot')}));['dragleave','drop'].forEach(ev=>dr.addEventListener(ev,e=>{e.preventDefault();dr.classList.remove('hot')}));
