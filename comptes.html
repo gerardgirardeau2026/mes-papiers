@@ -671,7 +671,7 @@ async function openOp(o){
   $('#opDoc').innerHTML='<option value="">— aucun —</option>';$('#opDocLink').innerHTML='';
   show('#ovOp');
   try{
-    if(!docsCache){const {data}=chk(await sb.from('docs').select('id,data').eq('supprime',false).range(0,9999),'docs');docsCache=data.map(r=>({id:r.id,...r.data}))}
+    if(!docsCache){const {data}=chk(await sb.from('docs').select('id,data').eq('supprime',false).range(0,9999),'docs');docsCache=data.filter(r=>r.id!=='__cats__').map(r=>({id:r.id,...r.data}))}
     const docsD=docsCache.filter(d=>(d.dossier||'perso')===CUR);
     const mt=Math.abs(+f.montant.value||0),dt=f.date.value;
     const score=d=>(d.montant!==''&&d.montant!=null&&Math.abs(Math.abs(+d.montant)-mt)<0.01?0:1000)+(d.date&&dt?Math.abs((new Date(d.date)-new Date(dt))/864e5):500);
