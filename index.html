@@ -348,12 +348,33 @@ table.imp tr.done-deja td{opacity:.55}
   </div>
 </div>
 
+<div class="ov" id="ovCats">
+  <div class="modal">
+    <div class="mh"><h3>⚙️ Gérer les catégories</h3><button class="x" data-close>×</button></div>
+    <div class="mb">
+      <p class="muted" style="margin-top:0">Change le nom ou la couleur, l'ordre avec ↑ ↓, ajoute ou supprime des catégories. « Divers » ne peut pas être supprimée : c'est là que vont les documents sans catégorie.</p>
+      <div id="catList"></div>
+      <button class="btn" id="bCatAdd" style="margin-top:12px">＋ Ajouter une catégorie</button>
+    </div>
+    <div class="mf"><button class="btn" id="bCatReset" style="margin-right:auto">Remettre la liste d'origine</button><button class="btn" data-close>Annuler</button><button class="btn pri" id="bCatSave">Enregistrer</button></div>
+  </div>
+</div>
+<style>
+.catrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.catrow input[type=color]{width:34px;height:30px;border:1px solid var(--line);border-radius:6px;padding:1px;background:#fff;cursor:pointer}
+.catrow input[type=text]{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font:inherit}
+.catrow .n{font-size:12px;color:var(--muted);white-space:nowrap;min-width:62px;text-align:right}
+.catrow button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 8px;cursor:pointer}
+.catrow button:disabled{opacity:.35;cursor:default}
+.catrow.del{background:#fdf0ee;padding:8px;border-radius:8px;flex-wrap:wrap;font-size:13px}
+.catrow.del select{border:1px solid var(--line);border-radius:6px;padding:4px}
+</style>
 <div class="toast" id="toast"></div>
 <div class="dragall" id="dragall">Lâche les fichiers pour créer un document</div>
 
 <script>
 "use strict";
-const CATS=[
+const CATS_DEF=[
  {id:'banque',nom:'Banque & comptes',c:'#2f5d50'},
  {id:'factures',nom:'Factures',c:'#3a6ea5'},
  {id:'assurances',nom:'Assurances',c:'#7a4fa0'},
@@ -367,7 +388,16 @@ const CATS=[
  {id:'identite',nom:'Identité & famille',c:'#666'},
  {id:'divers',nom:'Divers',c:'#9a9a9a'}
 ];
-const CAT=Object.fromEntries(CATS.map(c=>[c.id,c]));
+let CATS=[],CAT={};
+const catsLocal=()=>{try{return JSON.parse(localStorage.getItem('mp-cats')||'null')}catch(e){return null}};
+const catsSave=o=>{try{localStorage.setItem('mp-cats',JSON.stringify(o))}catch(e){}};
+function setCats(l){
+  CATS=(Array.isArray(l)&&l.length?l:CATS_DEF).map(c=>({id:c.id,nom:c.nom,c:c.c}));
+  if(!CATS.some(c=>c.id==='divers'))CATS.push({...CATS_DEF.find(c=>c.id==='divers')});
+  CAT=Object.fromEntries(CATS.map(c=>[c.id,c]));
+  const sc=document.getElementById('selCat');if(sc)sc.innerHTML=CATS.map(c=>`<option value="${c.id}">${c.nom.replace(/[&<>"]/g,'')}</option>`).join('');
+}
+setCats(catsLocal()?.list);
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const eur=n=>(n||0).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
@@ -440,7 +470,7 @@ function renderNav(){
     b('dash','🏠 Tableau de bord')+
     b('all','📄 Tous les documents',DX.length)+
     b('ech','⏰ Échéances',nEch||'')+
-    '<div class="nav-title">Catégories</div>'+
+    '<div class="nav-title" style="display:flex;align-items:center">Catégories<button id="bCats" title="Gérer les catégories (ajouter, renommer, supprimer)" style="margin-left:auto;width:auto;padding:2px 6px;font-size:13px">⚙️</button></div>'+
     CATS.map(c=>b('cat:'+c.id,esc(c.nom),cnt(c.id)||'',c.c)).join('');
 }
 function renderYears(){
@@ -449,6 +479,7 @@ function renderYears(){
   $('#dlOrg').innerHTML=[...new Set(DOCS.map(d=>d.organisme).filter(Boolean))].sort().map(o=>`<option value="${esc(o)}">`).join('');
 }
 function render(){
+  if(String(st.view).startsWith('cat:')&&!CAT[st.view.slice(4)])st.view='all';
   renderNav();renderYears();
   const v=st.view;
   $('#title').textContent=v==='dash'?'Tableau de bord':v==='all'?'Tous les documents':v==='ech'?'Échéances & renouvellements':CAT[v.slice(4)].nom;
@@ -644,8 +675,61 @@ document.querySelectorAll('.ov').forEach(o=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.ov.on').forEach(o=>hide('#'+o.id))});
 
+/* ---------- gérer les catégories ---------- */
+let CEDIT=null;
+const hex6=c=>/^#[0-9a-f]{3}$/i.test(c)?'#'+c.slice(1).split('').map(x=>x+x).join(''):(c||'#9a9a9a');
+const PALETTE=['#2f5d50','#3a6ea5','#7a4fa0','#b5562a','#c0392b','#8a6d3b','#4a5d73','#2a8a8a','#a05a7a','#5a6b2a','#d4a017','#e67e22','#16a085','#8e44ad'];
+const nDocsCat=id=>DOCS.filter(d=>(d.categorie||'divers')===id).length;
+function openCats(){CEDIT=CATS.map(c=>({...c,c:hex6(c.c)}));drawCats();show('#ovCats')}
+function drawCats(){
+  const vivants=CEDIT.filter(c=>!c.del);
+  $('#catList').innerHTML=CEDIT.map((c,i)=>{
+    const n=c.neu?0:nDocsCat(c.id);
+    if(c.del){
+      const opts=vivants.map(v=>`<option value="${v.id}" ${v.id===(c.vers||'divers')?'selected':''}>${esc(v.nom)}</option>`).join('');
+      return `<div class="catrow del">🗑 <b>${esc(c.nom)}</b> sera supprimée.${n?` Ses <b>${n}</b> document${n>1?'s':''} iront dans <select data-i="${i}" data-k="vers">${opts}</select>`:''}<button data-i="${i}" data-a="undo" style="margin-left:auto">Annuler</button></div>`;
+    }
+    return `<div class="catrow"><input type="color" data-i="${i}" data-k="c" value="${hex6(c.c)}" title="Couleur"><input type="text" data-i="${i}" data-k="nom" value="${esc(c.nom)}" maxlength="40"><span class="n">${n?n+' doc'+(n>1?'s':''):''}</span><button data-i="${i}" data-a="up" title="Monter" ${i===0?'disabled':''}>↑</button><button data-i="${i}" data-a="down" title="Descendre" ${i===CEDIT.length-1?'disabled':''}>↓</button><button data-i="${i}" data-a="del" title="Supprimer" ${c.id==='divers'?'disabled':''}>🗑</button></div>`;
+  }).join('');
+}
+$('#catList').oninput=e=>{const t=e.target,i=+t.dataset.i;if(!CEDIT||isNaN(i))return;CEDIT[i][t.dataset.k]=t.value};
+$('#catList').onclick=e=>{
+  const b=e.target.closest('button[data-a]');if(!b)return;const i=+b.dataset.i,a=b.dataset.a;
+  if(a==='up'&&i>0)[CEDIT[i-1],CEDIT[i]]=[CEDIT[i],CEDIT[i-1]];
+  if(a==='down'&&i<CEDIT.length-1)[CEDIT[i+1],CEDIT[i]]=[CEDIT[i],CEDIT[i+1]];
+  if(a==='del'){if(CEDIT[i].neu)CEDIT.splice(i,1);else{CEDIT[i].del=true;CEDIT[i].vers='divers'}}
+  if(a==='undo'){CEDIT[i].del=false;delete CEDIT[i].vers}
+  drawCats();
+};
+$('#bCatAdd').onclick=()=>{
+  const used=CEDIT.map(c=>c.c);
+  CEDIT.push({id:'c'+uid(),nom:'',c:PALETTE.find(p=>!used.includes(p))||PALETTE[CEDIT.length%PALETTE.length],neu:true});
+  drawCats();const ins=$('#catList').querySelectorAll('input[type=text]');const l=ins[ins.length-1];l.focus();l.placeholder='Nom de la catégorie';
+};
+$('#bCatReset').onclick=()=>{
+  if(!confirm("Remettre les 12 catégories d'origine ?\nTes catégories ajoutées seront supprimées, et leurs documents iront dans « Divers ».\n(Tu pourras encore annuler avant d'enregistrer.)"))return;
+  const garde=CATS_DEF.map(c=>({...c,c:hex6(c.c)}));
+  const ajout=CEDIT.filter(c=>!c.neu&&!CATS_DEF.some(d=>d.id===c.id)).map(c=>({...c,del:true,vers:'divers'}));
+  CEDIT=garde.concat(ajout);drawCats();
+};
+$('#bCatSave').onclick=async()=>{
+  const vivants=CEDIT.filter(c=>!c.del);
+  for(const c of vivants){c.nom=String(c.nom||'').trim();if(!c.nom){toast('⚠️ Donne un nom à chaque catégorie');return}}
+  const noms=vivants.map(c=>c.nom.toLowerCase());if(new Set(noms).size!==noms.length){toast('⚠️ Deux catégories ont le même nom');return}
+  const vers={};for(const c of CEDIT.filter(c=>c.del))vers[c.id]=vivants.some(v=>v.id===c.vers)?c.vers:'divers';
+  const now=new Date().toISOString();let moved=0;
+  for(const d of DOCS){
+    const k=d.categorie||'divers';
+    if(vers[k]){d.categorie=vers[k];d.modifie=now;d._sync='';moved++;if(!d._remote)await dbPut(d)}
+  }
+  const list=vivants.map(c=>({id:c.id,nom:c.nom,c:c.c}));
+  catsSave({list,modifie:now,dirty:true});setCats(list);
+  hide('#ovCats');render();if(typeof syncSoon==='function')syncSoon();
+  toast('✅ Catégories enregistrées'+(moved?` · ${moved} document${moved>1?'s':''} déplacé${moved>1?'s':''}`:''));
+};
+
 /* ---------- navigation ---------- */
-$('#nav').onclick=e=>{const b=e.target.closest('button');if(!b)return;st.view=b.dataset.v;$('#side').classList.remove('open');render()};
+$('#nav').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='bCats'){openCats();return}st.view=b.dataset.v;$('#side').classList.remove('open');render()};
 $('#view').onclick=e=>{
   const s=e.target.closest('[data-sort]');
   if(s){const k=s.dataset.sort;st.dir=st.sort===k?-st.dir:(k==='date'||k==='montant'?-1:1);st.sort=k;render();return}
@@ -806,6 +890,7 @@ function analyse(text,docs=DD()){
   const learned=r.organisme&&docs.filter(d=>d.organisme&&norm(d.organisme)===norm(r.organisme)).reduce((a,d)=>(a[d.categorie]=(a[d.categorie]||0)+1,a),{});
   const lc=learned&&Object.entries(learned).sort((a,b)=>b[1]-a[1])[0];
   r.categorie=lc?lc[0]:type?.cat||best?.cat||(KEYCAT.find(([re])=>re.test(n))||[])[1]||'divers';
+  if(!CAT[r.categorie])r.categorie='divers';
   r.appris=!!lc;
   if(r.categorie==='identite'&&!lc) delete r.organisme;
   // dates
@@ -1129,8 +1214,12 @@ async function sync(){
       else{await dbDel(d.id);d._remote=true;d.fichiers=(d.fichiers||[]).map(({blob,...x})=>x)}
       syncStatus();
     }
+    // 2b. catégories modifiées sur cet appareil
+    {const cl=catsLocal();if(cl&&cl.dirty){chk(await sb.from('docs').upsert({id:'__cats__',user_id:uid,data:{list:cl.list},modifie:cl.modifie,supprime:false}),'envoi catégories');const c2=catsLocal();if(c2&&c2.modifie===cl.modifie)catsSave({...cl,dirty:false})}}
     // 3. réception de ce qui a été ajouté ailleurs (autre appareil)
     const rows=[];for(let from=0;;from+=1000){const {data}=chk(await sb.from('docs').select('id,data,modifie,supprime').order('id').range(from,from+999),'lecture');rows.push(...data);if(data.length<1000)break}
+    {const i=rows.findIndex(r=>r.id==='__cats__');if(i>=0){const rc=rows.splice(i,1)[0],cl=catsLocal();
+      if(!rc.supprime&&rc.data&&Array.isArray(rc.data.list)&&(!cl||(!cl.dirty&&new Date(cl.modifie||0)<new Date(rc.modifie)))){catsSave({list:rc.data.list,modifie:new Date(rc.modifie).toISOString(),dirty:false});setCats(rc.data.list);render()}}}
     const remote=rows.filter(r=>!r.supprime).map(r=>({...r.data,id:r.id}));
     const supprimes=Object.fromEntries(rows.filter(r=>r.supprime).map(r=>[r.id,new Date(r.modifie).toISOString()]));
     let changed=false;
