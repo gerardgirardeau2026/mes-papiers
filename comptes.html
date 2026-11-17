@@ -359,7 +359,7 @@ async function lockKey(k){
   }
 }
 $('#lockPad').addEventListener('click',e=>{const b=e.target.closest('button');if(b)lockKey(b.dataset.k||b.textContent.trim())});
-document.addEventListener('keydown',e=>{if(!lockState)return;if(/^\d$/.test(e.key))lockKey(e.key);else if(e.key==='Backspace')lockKey('back');e.preventDefault()},true);
+document.addEventListener('keydown',e=>{if(!lockState||document.querySelector('.cc-ov')||(e.target&&e.target.closest&&e.target.closest('input,textarea,select')&&!e.target.closest('#lock')))return;if(/^\d$/.test(e.key))lockKey(e.key);else if(e.key==='Backspace')lockKey('back');e.preventDefault()},true);
 $('#lockForgot').onclick=e=>{e.preventDefault();if(confirm('Effacer la connexion de cet appareil ? Tu devras te reconnecter avec ton e-mail et ton mot de passe, puis choisir un nouveau code.')){wipeLogin();relock()}};
 let hiddenAt=0;
 document.addEventListener('visibilitychange',()=>{if(document.hidden){hiddenAt=Date.now();keepSession()}else if(pinSet()&&hiddenAt&&Date.now()-hiddenAt>5*60000)relock()});
@@ -678,7 +678,7 @@ async function openOp(o){
   $('#opDoc').innerHTML='<option value="">— aucun —</option>';$('#opDocLink').innerHTML='';
   show('#ovOp');
   try{
-    if(!docsCache){const {data}=chk(await sb.from('docs').select('id,data').eq('supprime',false).range(0,9999),'docs');docsCache=data.filter(r=>r.id!=='__cats__').map(r=>({id:r.id,...r.data}))}
+    if(!docsCache){const {data}=chk(await sb.from('docs').select('id,data').eq('supprime',false).range(0,9999),'docs');docsCache=data.filter(r=>!String(r.id).startsWith('__')).map(r=>({id:r.id,...r.data}))}
     const docsD=docsCache.filter(d=>(d.dossier||'perso')===CUR);
     const mt=Math.abs(+f.montant.value||0),dt=f.date.value;
     const score=d=>(d.montant!==''&&d.montant!=null&&Math.abs(Math.abs(+d.montant)-mt)<0.01?0:1000)+(d.date&&dt?Math.abs((new Date(d.date)-new Date(dt))/864e5):500);

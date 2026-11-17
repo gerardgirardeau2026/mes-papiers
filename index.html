@@ -369,6 +369,54 @@ table.imp tr.done-deja td{opacity:.55}
 .catrow.del{background:#fdf0ee;padding:8px;border-radius:8px;flex-wrap:wrap;font-size:13px}
 .catrow.del select{border:1px solid var(--line);border-radius:6px;padding:4px}
 </style>
+<div class="ov" id="ovNote">
+  <div class="modal">
+    <div class="mh"><h3 id="noteTitre">📝 Note</h3><button class="x" data-close>×</button></div>
+    <div class="mb">
+      <input id="nTitre" class="f" style="width:100%;font-size:17px;font-weight:600;padding:10px 12px;border:1px solid var(--line);border-radius:10px" placeholder="Titre (facultatif)" maxlength="120">
+      <textarea id="nTexte" rows="14" style="width:100%;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:10px;font:15px/1.5 inherit;resize:vertical" placeholder="Écris ta note ici…"></textarea>
+      <p class="muted" id="nInfo" style="margin:6px 0 0;font-size:12.5px"></p>
+    </div>
+    <div class="mf"><button class="btn" id="nSuppr" style="margin-right:auto;color:var(--danger,#c0392b)">🗑 Supprimer</button><button class="btn" data-close>Annuler</button><button class="btn pri" id="nSave">Enregistrer</button></div>
+  </div>
+</div>
+<div class="ov" id="ovMdp">
+  <div class="modal">
+    <div class="mh"><h3 id="mTitre">🔑 Mot de passe</h3><button class="x" data-close>×</button></div>
+    <div class="mb">
+      <form class="form" id="mForm" autocomplete="off" onsubmit="return false">
+        <label>Site ou service *<input id="mSite" required placeholder="ex. Amazon, Impots.gouv, Free…" autocomplete="off"></label>
+        <label>Adresse du site<input id="mUrl" placeholder="ex. amazon.fr" autocomplete="off"></label>
+        <label class="full">Identifiant / e-mail<input id="mLogin" autocomplete="off" data-lpignore="true"></label>
+        <label class="full">Mot de passe
+          <span style="display:flex;gap:6px"><input id="mPass" type="password" autocomplete="new-password" data-sans-oeil="1" data-lpignore="true" style="flex:1;font-family:ui-monospace,Consolas,monospace">
+          <button type="button" class="btn" id="mVoir" title="Afficher / masquer">👁</button><button type="button" class="btn" id="mGen" title="Inventer un mot de passe solide">🎲 Générer</button></span>
+          <span class="muted" id="mForce" style="font-size:12.5px"></span></label>
+        <label class="full">Notes (question secrète, code PIN de la carte…)<textarea id="mNote" rows="3"></textarea></label>
+      </form>
+    </div>
+    <div class="mf"><button class="btn" id="mSuppr" style="margin-right:auto;color:var(--danger,#c0392b)">🗑 Supprimer</button><button class="btn" data-close>Annuler</button><button class="btn pri" id="mSave">Enregistrer</button></div>
+  </div>
+</div>
+<style>
+.notes{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.note{background:#fffbe8;border:1px solid #efe3b0;border-radius:12px;padding:14px 16px;cursor:pointer;min-height:120px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;flex-direction:column}
+.note:hover{box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.note b{font-size:15.5px;margin-bottom:6px}
+.note p{margin:0;white-space:pre-wrap;color:#3d4a44;font-size:14px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;flex:1}
+.note small{color:var(--muted);margin-top:8px;font-size:12px}
+.vault{max-width:460px;margin:30px auto;text-align:center}
+.vault input{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px}
+.mdp{width:100%;border-collapse:collapse}
+.mdp td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.mdp tr:hover td{background:rgba(0,0,0,.02)}
+.mdp .site{font-weight:600;cursor:pointer}
+.mdp .site small{display:block;font-weight:400;color:var(--muted)}
+.mdp .pw{font-family:ui-monospace,Consolas,monospace;letter-spacing:1px}
+.mdp button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:4px 7px;cursor:pointer;font-size:13px}
+.mdp .lg{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:760px){.mdp .cache-tel{display:none}.mdp .lg{max-width:130px}}
+</style>
 <div class="toast" id="toast"></div>
 <div class="dragall" id="dragall">Lâche les fichiers pour créer un document</div>
 
@@ -470,6 +518,8 @@ function renderNav(){
     b('dash','🏠 Tableau de bord')+
     b('all','📄 Tous les documents',DX.length)+
     b('ech','⏰ Échéances',nEch||'')+
+    b('notes','📝 Notes',notesVivantes().length||'')+
+    b('mdp','🔑 Mots de passe',MDPC?MDPC.length:(VK.key||SERVICE_V?'':'🔒'))+
     '<div class="nav-title" style="display:flex;align-items:center">Catégories<button id="bCats" title="Gérer les catégories (ajouter, renommer, supprimer)" style="margin-left:auto;width:auto;padding:2px 6px;font-size:13px">⚙️</button></div>'+
     CATS.map(c=>b('cat:'+c.id,esc(c.nom),cnt(c.id)||'',c.c)).join('');
 }
@@ -482,6 +532,10 @@ function render(){
   if(String(st.view).startsWith('cat:')&&!CAT[st.view.slice(4)])st.view='all';
   renderNav();renderYears();
   const v=st.view;
+  {const spe=v==='notes'||v==='mdp';['#fAnnee','#bScan','#topDrop','#bAdd'].forEach(x=>{const e=$(x);if(e)e.style.display=spe?'none':''});
+   $('#q').placeholder=v==='notes'?'Rechercher dans mes notes…':v==='mdp'?'Rechercher un site, un identifiant…':'Rechercher (EDF, garage, 2025…)'}
+  if(v==='notes'){$('#title').textContent='Notes';return renderNotes()}
+  if(v==='mdp'){$('#title').textContent='Mots de passe';return renderMdp()}
   $('#title').textContent=v==='dash'?'Tableau de bord':v==='all'?'Tous les documents':v==='ech'?'Échéances & renouvellements':CAT[v.slice(4)].nom;
   if(v==='dash' && !st.q) return renderDash();
   renderList();
@@ -728,15 +782,188 @@ $('#bCatSave').onclick=async()=>{
   toast('✅ Catégories enregistrées'+(moved?` · ${moved} document${moved>1?'s':''} déplacé${moved>1?'s':''}`:''));
 };
 
+/* ====================== NOTES & MOTS DE PASSE ====================== */
+const SERVICE_V=false;   // Coccinelle Compte : tout est déjà chiffré par la clé du compte
+const lsGet=k=>{try{return JSON.parse(localStorage.getItem('mp-'+k)||'null')||{items:[]}}catch(e){return {items:[]}}};
+const lsSet=(k,o)=>{try{localStorage.setItem('mp-'+k,JSON.stringify(o))}catch(e){toast('⚠️ Mémoire du navigateur pleine')}};
+const nowIso=()=>new Date().toISOString();
+function fusion(a,b){const m=new Map();for(const x of [...(a||[]),...(b||[])]){const y=m.get(x.id);if(!y||new Date(x.modifie)>new Date(y.modifie))m.set(x.id,x)}return [...m.values()]}
+function majListe(k,item){const L=lsGet(k);L.items=fusion(L.items,[item]);L.dirty=true;lsSet(k,L);if(typeof syncSoon==='function')syncSoon()}
+async function syncListes(rows,uid){
+  for(const k of ['notes','mdp']){
+    const id='__'+k+'__',i=rows.findIndex(r=>r.id===id),rr=i>=0?rows.splice(i,1)[0]:null;
+    const L=lsGet(k),R=(rr&&!rr.supprime&&rr.data)||{};
+    const obj={items:fusion(L.items,R.items)};
+    if(k==='mdp'){const src=(R.sel&&(!L.sel||new Date(R.selModifie||0)>=new Date(L.selModifie||0)))?R:L;if(src.sel){obj.sel=src.sel;obj.verif=src.verif;obj.selModifie=src.selModifie}}
+    const sig=o=>JSON.stringify([(o.items||[]).map(x=>x.id+'|'+x.modifie).sort(),o.sel||'']);
+    if(sig(obj)!==sig(R)&&(obj.items.length||obj.sel)){const r=await sb.from('docs').upsert({id,user_id:uid,data:obj,modifie:nowIso(),supprime:false});if(r.error)throw new Error('envoi '+k+' : '+r.error.message)}
+    const changeLocal=sig(obj)!==sig(L);
+    if(k==='mdp'&&L.sel&&obj.sel!==L.sel){VK.key=null;MDPC=null}
+    lsSet(k,{...obj,dirty:false});
+    if(changeLocal){if(k==='mdp'&&(VK.key||SERVICE_V))await chargerMdp();if(st.view===k||st.view==='dash')render();else renderNav()}
+  }
+}
+
+/* ---------- 📝 notes ---------- */
+const notesVivantes=()=>(lsGet('notes').items||[]).filter(n=>!n.supprime);
+let noteId=null;
+function renderNotes(){
+  const q=(st.q||'').toLowerCase();
+  const l=notesVivantes().filter(n=>!q||(n.titre+' '+n.texte).toLowerCase().includes(q)).sort((a,b)=>(b.modifie||'')>(a.modifie||'')?1:-1);
+  $('#view').innerHTML=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:14px"><button class="btn pri" id="nNew">＋ Nouvelle note</button><span class="muted">${l.length} note${l.length>1?'s':''}${q?' trouvée'+(l.length>1?'s':''):''}</span></div>`+
+   (l.length?`<div class="notes">${l.map(n=>`<div class="note" data-note="${n.id}"><b>${esc(n.titre||'Sans titre')}</b><p>${esc(n.texte||'')}</p><small>${new Date(n.modifie).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})}</small></div>`).join('')}</div>`
+     :`<div class="empty"><b>${q?'Aucune note trouvée':'Aucune note pour l\'instant'}</b>Une idée, une liste de courses, des infos à garder sous la main : clique sur « ＋ Nouvelle note ».</div>`);
+  $('#nNew').onclick=()=>ouvrirNote(null);
+  $('#view').querySelectorAll('[data-note]').forEach(e=>e.onclick=()=>ouvrirNote(e.dataset.note));
+}
+function ouvrirNote(id){
+  const n=id?notesVivantes().find(x=>x.id===id):null;noteId=n?n.id:null;
+  $('#nTitre').value=n?n.titre||'':'';$('#nTexte').value=n?n.texte||'':'';
+  $('#nInfo').textContent=n?'Modifiée le '+new Date(n.modifie).toLocaleString('fr-FR',{dateStyle:'long',timeStyle:'short'}):'';
+  $('#nSuppr').style.display=n?'':'none';show('#ovNote');setTimeout(()=>(n?$('#nTexte'):$('#nTitre')).focus(),50);
+}
+$('#nSave').onclick=()=>{
+  const titre=$('#nTitre').value.trim(),texte=$('#nTexte').value;
+  if(!titre&&!texte.trim()){toast('La note est vide');return}
+  majListe('notes',{id:noteId||'n'+uid(),titre,texte,modifie:nowIso()});hide('#ovNote');toast('✅ Note enregistrée');render();
+};
+$('#nSuppr').onclick=()=>{if(!noteId||!confirm('Supprimer cette note ?'))return;majListe('notes',{id:noteId,supprime:true,modifie:nowIso()});hide('#ovNote');toast('Note supprimée');render()};
+
+/* ---------- 🔑 coffre à mots de passe ---------- */
+const VK={key:null,timer:null};let MDPC=null,mdpId=null;const VUS=new Set();
+const b64e=u=>{let s='';u.forEach(c=>s+=String.fromCharCode(c));return btoa(s)};
+const b64d=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function cleCoffre(mdp,sel){const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(mdp),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt:b64d(sel),iterations:600000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
+async function vEnc(o,key=VK.key){
+  if(SERVICE_V)return CC.enc(o);
+  const iv=crypto.getRandomValues(new Uint8Array(12)),ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(o))));
+  const u=new Uint8Array(12+ct.length);u.set(iv);u.set(ct,12);return 'v1:'+b64e(u)}
+async function vDec(s,key=VK.key){
+  if(SERVICE_V)return CC.dec(s);
+  const u=b64d(String(s).slice(3));return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12)},key,u.slice(12))))}
+function relancerVerrou(){if(SERVICE_V)return;clearTimeout(VK.timer);VK.timer=setTimeout(()=>{verrouillerCoffre();toast('🔒 Coffre verrouillé (10 min sans activité)')},600000)}
+function verrouillerCoffre(){if(SERVICE_V)return;VK.key=null;MDPC=null;VUS.clear();clearTimeout(VK.timer);if(st.view==='mdp')render();else renderNav()}
+async function chargerMdp(){
+  const out=[];for(const it of (lsGet('mdp').items||[]).filter(x=>!x.supprime)){try{out.push({id:it.id,modifie:it.modifie,...await vDec(it.ct)})}catch(e){}}
+  MDPC=out.sort((a,b)=>(a.site||'').localeCompare(b.site||'','fr',{sensitivity:'base'}));
+}
+function forceMdp(p){if(!p)return '';let sc=0;if(p.length>=12)sc++;if(p.length>=16)sc++;if(/[a-z]/.test(p)&&/[A-Z]/.test(p))sc++;if(/\d/.test(p))sc++;if(/[^A-Za-z0-9]/.test(p))sc++;
+  return sc>=5?'💪 Très solide':sc>=4?'👍 Solide':sc>=3?'😐 Moyen':'⚠️ Faible : allonge-le ou mélange lettres, chiffres et symboles'}
+function genMdp(n=16){const A='ABCDEFGHJKLMNPQRSTUVWXYZ',a='abcdefghijkmnopqrstuvwxyz',d='23456789',y='!?@#$%&*+-=';const all=A+a+d+y;
+  for(;;){const r=crypto.getRandomValues(new Uint32Array(n));const p=[...r].map(x=>all[x%all.length]).join('');if(/[A-Z]/.test(p)&&/[a-z]/.test(p)&&/\d/.test(p)&&/[!?@#$%&*+\-=]/.test(p))return p}}
+async function copier(t,quoi){try{await navigator.clipboard.writeText(t);toast('📋 '+quoi+' copié');if(quoi==='Mot de passe')setTimeout(async()=>{try{if(document.hasFocus()&&(await navigator.clipboard.readText())===t)await navigator.clipboard.writeText('')}catch(e){}},45000)}catch(e){prompt('Copie avec Ctrl+C :',t)}}
+const lienSite=u=>{if(!u)return '';const x=/^https?:\/\//i.test(u)?u:'https://'+u;return x};
+function renderMdp(){
+  relancerVerrou();
+  const L=lsGet('mdp');
+  if(!SERVICE_V&&!VK.key){
+    if(!L.sel){
+      $('#view').innerHTML=`<div class="box vault"><div style="font-size:44px">🔐</div><h2>Crée ton coffre à mots de passe</h2>
+       <p class="muted" style="text-align:left">Tes mots de passe seront <b>chiffrés sur cet appareil</b> avec un <b>mot de passe maître</b>, avant d'être enregistrés en ligne. Personne d'autre ne peut les lire, pas même Supabase.</p>
+       <p style="text-align:left;background:#fff4dc;border-radius:8px;padding:10px 12px;font-size:14px">⚠️ <b>Retiens bien ce mot de passe maître</b> (ou note-le en lieu sûr) : si tu l'oublies, <b>personne ne pourra récupérer</b> tes mots de passe.</p>
+       <input type="password" id="vM1" placeholder="Mot de passe maître (12 caractères minimum)" autocomplete="new-password"><input type="password" id="vM2" placeholder="Retape-le" autocomplete="new-password">
+       <button class="btn pri" id="vCree" style="width:100%;margin-top:12px">🔐 Créer mon coffre</button></div>`;
+      $('#vCree').onclick=async()=>{const a=$('#vM1').value,b=$('#vM2').value;if(a.length<12)return toast('12 caractères minimum');if(a!==b)return toast('Les deux mots de passe ne sont pas identiques');
+        $('#vCree').disabled=true;$('#vCree').textContent='Création…';const sel=b64e(crypto.getRandomValues(new Uint8Array(16)));const key=await cleCoffre(a,sel);
+        const L2=lsGet('mdp');L2.sel=sel;L2.selModifie=nowIso();L2.verif=await vEnc({ok:'coccinelle'},key);L2.dirty=true;lsSet('mdp',L2);VK.key=key;await chargerMdp();syncSoon();toast('✅ Coffre créé');render()};
+    }else{
+      $('#view').innerHTML=`<div class="box vault"><div style="font-size:44px">🔒</div><h2>Coffre verrouillé</h2><p class="muted">Tape ton mot de passe maître pour voir tes mots de passe.</p>
+       <form id="vF"><input type="password" id="vM" placeholder="Mot de passe maître" autocomplete="current-password"><button class="btn pri" style="width:100%;margin-top:12px">🔓 Ouvrir le coffre</button></form>
+       <p class="muted" style="font-size:12.5px;margin-top:14px">Il se reverrouille tout seul après 10 minutes sans activité.</p></div>`;
+      setTimeout(()=>$('#vM')&&$('#vM').focus(),50);
+      $('#vF').onsubmit=async e=>{e.preventDefault();const m=$('#vM').value;if(!m)return;const btn=$('#vF button');btn.disabled=true;btn.textContent='Ouverture…';
+        try{const key=await cleCoffre(m,lsGet('mdp').sel);await vDec(lsGet('mdp').verif,key);VK.key=key;await chargerMdp();render()}
+        catch(x){btn.disabled=false;btn.textContent='🔓 Ouvrir le coffre';toast('❌ Mot de passe maître incorrect');$('#vM').select()}};
+    }
+    renderNav();return;
+  }
+  if(!MDPC){$('#view').innerHTML='<p class="muted">Ouverture…</p>';chargerMdp().then(()=>{if(st.view==='mdp')render()});return}
+  renderNav();
+  const q=(st.q||'').toLowerCase();
+  const l=MDPC.filter(m=>!q||[m.site,m.url,m.login,m.note].join(' ').toLowerCase().includes(q));
+  $('#view').innerHTML=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+    <button class="btn pri" id="mNew">＋ Ajouter</button>
+    <label class="btn" style="cursor:pointer">📥 Importer du navigateur<input type="file" id="mCsv" accept=".csv,text/csv" hidden></label>
+    ${SERVICE_V?'':'<button class="btn" id="mChg">🔁 Changer le mot de passe maître</button><button class="btn" id="mLock">🔒 Verrouiller</button>'}
+    <span class="muted" style="margin-left:auto">${l.length} mot${l.length>1?'s':''} de passe</span></div>`+
+   (l.length?`<div class="box" style="padding:6px 12px"><table class="mdp"><tbody>${l.map(m=>`<tr data-m="${m.id}">
+     <td class="site" data-a="edit">${esc(m.site||'—')}${m.url?`<small>${esc(m.url)}</small>`:''}</td>
+     <td class="lg cache-tel" title="${esc(m.login||'')}">${esc(m.login||'')}</td>
+     <td style="white-space:nowrap">${m.login?'<button data-a="cl" title="Copier l\'identifiant">👤 📋</button>':''}</td>
+     <td class="pw cache-tel">${VUS.has(m.id)?esc(m.mdp||''):(m.mdp?'••••••••':'')}</td>
+     <td style="white-space:nowrap;text-align:right">${m.mdp?`<button data-a="voir" title="Afficher / masquer">${VUS.has(m.id)?'🙈':'👁'}</button> <button data-a="cp" title="Copier le mot de passe">🔑 📋</button>`:''} ${m.url?`<button data-a="go" title="Ouvrir le site">↗</button>`:''} <button data-a="edit" title="Modifier">✏️</button></td></tr>`).join('')}</tbody></table></div>`
+     :`<div class="empty"><b>${q?'Aucun résultat':'Ton coffre est vide'}</b>${q?'':'Clique sur « ＋ Ajouter », ou récupère d\'un coup les mots de passe enregistrés dans ton navigateur avec « 📥 Importer du navigateur ».'}</div>`)+
+   `<p class="muted" style="font-size:12.5px;margin-top:12px">🔐 Tes mots de passe sont chiffrés avant d'être enregistrés en ligne.${SERVICE_V?'':' Il se reverrouille tout seul après 10 minutes sans activité.'} Astuce : « 🎲 Générer » invente un mot de passe solide, différent pour chaque site.</p>`;
+  $('#mNew').onclick=()=>ouvrirMdp(null);
+  $('#mCsv').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importerCsv(f)};
+  if($('#mLock'))$('#mLock').onclick=()=>{verrouillerCoffre();toast('🔒 Coffre verrouillé')};
+  if($('#mChg'))$('#mChg').onclick=changerMaitre;
+  $('#view').querySelectorAll('tr[data-m]').forEach(tr=>tr.onclick=e=>{
+    const b=e.target.closest('[data-a]');if(!b)return;const m=MDPC.find(x=>x.id===tr.dataset.m);if(!m)return;relancerVerrou();
+    const a=b.dataset.a;
+    if(a==='edit')ouvrirMdp(m.id);
+    if(a==='cl')copier(m.login,'Identifiant');
+    if(a==='cp')copier(m.mdp,'Mot de passe');
+    if(a==='voir'){VUS.has(m.id)?VUS.delete(m.id):VUS.add(m.id);render()}
+    if(a==='go')window.open(lienSite(m.url),'_blank','noopener');
+  });
+}
+function ouvrirMdp(id){
+  const m=id?MDPC.find(x=>x.id===id):null;mdpId=m?m.id:null;
+  $('#mTitre').textContent=m?'🔑 '+(m.site||'Mot de passe'):'🔑 Nouveau mot de passe';
+  $('#mSite').value=m?m.site||'':'';$('#mUrl').value=m?m.url||'':'';$('#mLogin').value=m?m.login||'':'';$('#mPass').value=m?m.mdp||'':'';$('#mNote').value=m?m.note||'':'';
+  $('#mPass').type='password';$('#mVoir').textContent='👁';$('#mForce').textContent=forceMdp($('#mPass').value);
+  $('#mSuppr').style.display=m?'':'none';show('#ovMdp');setTimeout(()=>$('#mSite').focus(),50);
+}
+$('#mVoir').onclick=()=>{const i=$('#mPass');i.type=i.type==='password'?'text':'password';$('#mVoir').textContent=i.type==='text'?'🙈':'👁'};
+$('#mGen').onclick=()=>{$('#mPass').value=genMdp();$('#mPass').type='text';$('#mVoir').textContent='🙈';$('#mForce').textContent=forceMdp($('#mPass').value)};
+$('#mPass').oninput=()=>$('#mForce').textContent=forceMdp($('#mPass').value);
+$('#mSave').onclick=async()=>{
+  const o={site:$('#mSite').value.trim(),url:$('#mUrl').value.trim(),login:$('#mLogin').value.trim(),mdp:$('#mPass').value,note:$('#mNote').value.trim()};
+  if(!o.site){toast('Indique le site ou le service');$('#mSite').focus();return}
+  if(!SERVICE_V&&!VK.key){toast('Coffre verrouillé');return}
+  majListe('mdp',{id:mdpId||'m'+uid(),modifie:nowIso(),ct:await vEnc(o)});await chargerMdp();hide('#ovMdp');toast('✅ Enregistré dans le coffre');render();
+};
+$('#mSuppr').onclick=async()=>{if(!mdpId||!confirm('Supprimer ce mot de passe du coffre ?'))return;majListe('mdp',{id:mdpId,supprime:true,modifie:nowIso()});await chargerMdp();hide('#ovMdp');toast('Supprimé');render()};
+async function changerMaitre(){
+  const a=prompt('Nouveau mot de passe maître (12 caractères minimum) :');if(a==null)return;if(a.length<12)return toast('12 caractères minimum');
+  if(prompt('Retape le nouveau mot de passe maître :')!==a)return toast('Les deux ne sont pas identiques');
+  toast('Chiffrement en cours…');const sel=b64e(crypto.getRandomValues(new Uint8Array(16))),key=await cleCoffre(a,sel),t=nowIso();
+  const L=lsGet('mdp');const items=[];
+  for(const it of L.items){if(it.supprime){items.push(it);continue}try{const o=await vDec(it.ct);items.push({id:it.id,modifie:t,ct:await vEnc(o,key)})}catch(e){items.push(it)}}
+  lsSet('mdp',{items,sel,selModifie:t,verif:await vEnc({ok:'coccinelle'},key),dirty:true});VK.key=key;await chargerMdp();syncSoon();toast('✅ Mot de passe maître changé');render();
+}
+function lireCsv(txt){const rows=[];let r=[],f='',q=false;for(let i=0;i<txt.length;i++){const c=txt[i];
+  if(q){if(c==='"'){if(txt[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+  else if(c==='"')q=true;else if(c===','||c===';'){r.push(f);f=''}else if(c==='\n'){r.push(f.replace(/\r$/,''));rows.push(r);r=[];f=''}else f+=c}
+  if(f||r.length){r.push(f.replace(/\r$/,''));rows.push(r)}return rows.filter(x=>x.some(v=>v.trim()))}
+async function importerCsv(file){
+  const rows=lireCsv(await file.text());if(rows.length<2)return toast('Fichier vide ou illisible');
+  const h=rows[0].map(x=>x.trim().toLowerCase()),col=(...n)=>h.findIndex(x=>n.includes(x));
+  const iN=col('name','title','nom','titre'),iU=col('url','login_uri','website','site'),iL=col('username','login','login_username','identifiant','email'),iP=col('password','login_password','mot de passe'),iX=col('note','notes','extra');
+  if(iP<0)return toast('❌ Colonne « password » introuvable : ce n\'est pas un export de mots de passe');
+  const deja=new Set(MDPC.map(m=>(m.url+'|'+m.login+'|'+m.mdp).toLowerCase()));let n=0,dbl=0;const t=nowIso();const L=lsGet('mdp');
+  for(const r of rows.slice(1)){const url=iU>=0?r[iU]||'':'',mdp=r[iP]||'';if(!mdp)continue;
+    let site=iN>=0?r[iN]||'':'';if(!site){try{site=new URL(url).hostname.replace(/^www\./,'')}catch(e){site=url||'Sans nom'}}
+    const o={site,url:url.replace(/^https?:\/\//,'').replace(/\/$/,''),login:iL>=0?r[iL]||'':'',mdp,note:iX>=0?r[iX]||'':''};
+    const k=(o.url+'|'+o.login+'|'+o.mdp).toLowerCase();if(deja.has(k)){dbl++;continue}deja.add(k);
+    L.items.push({id:'m'+uid(),modifie:t,ct:await vEnc(o)});n++}
+  L.dirty=true;lsSet('mdp',L);await chargerMdp();syncSoon();render();
+  alert(`✅ ${n} mot${n>1?'s':''} de passe importé${n>1?'s':''}${dbl?` (${dbl} déjà présent${dbl>1?'s':''}, ignoré${dbl>1?'s':''})`:''}.\n\n⚠️ Important : supprime maintenant le fichier « ${file.name} » de ton ordinateur (et vide la corbeille) : il contient tous tes mots de passe en clair.`);
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&!SERVICE_V&&VK.key)clearTimeout(VK.timer),VK.timer=setTimeout(verrouillerCoffre,120000)});
+
 /* ---------- navigation ---------- */
 $('#nav').onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='bCats'){openCats();return}st.view=b.dataset.v;$('#side').classList.remove('open');render()};
 $('#view').onclick=e=>{
+  if(st.view==='notes'||st.view==='mdp')return;
   const s=e.target.closest('[data-sort]');
   if(s){const k=s.dataset.sort;st.dir=st.sort===k?-st.dir:(k==='date'||k==='montant'?-1:1);st.sort=k;render();return}
   const c=e.target.closest('[data-cat]');if(c){st.view='cat:'+c.dataset.cat;render();return}
   const r=e.target.closest('[data-id]');if(r)openDet(r.dataset.id);
 };
-$('#q').oninput=e=>{st.q=e.target.value;if(st.q&&st.view==='dash')st.view='all';render()};
+$('#q').oninput=e=>{st.q=e.target.value;if(st.q&&st.view==='dash')st.view='all';if(st.view==='mdp'||st.view==='notes'){const p=e.target.selectionStart;render();e.target.focus();try{e.target.setSelectionRange(p,p)}catch(x){}return}render()};
 $('#fAnnee').onchange=e=>{st.annee=e.target.value;render()};
 $('#bAdd').onclick=()=>openForm();
 $('#bMenu').onclick=()=>$('#side').classList.toggle('open');
@@ -1220,6 +1447,7 @@ async function sync(){
     const rows=[];for(let from=0;;from+=1000){const {data}=chk(await sb.from('docs').select('id,data,modifie,supprime').order('id').range(from,from+999),'lecture');rows.push(...data);if(data.length<1000)break}
     {const i=rows.findIndex(r=>r.id==='__cats__');if(i>=0){const rc=rows.splice(i,1)[0],cl=catsLocal();
       if(!rc.supprime&&rc.data&&Array.isArray(rc.data.list)&&(!cl||(!cl.dirty&&new Date(cl.modifie||0)<new Date(rc.modifie)))){catsSave({list:rc.data.list,modifie:new Date(rc.modifie).toISOString(),dirty:false});setCats(rc.data.list);render()}}}
+    await syncListes(rows,uid);
     const remote=rows.filter(r=>!r.supprime).map(r=>({...r.data,id:r.id}));
     const supprimes=Object.fromEntries(rows.filter(r=>r.supprime).map(r=>[r.id,new Date(r.modifie).toISOString()]));
     let changed=false;
@@ -1383,7 +1611,7 @@ async function lockKey(k){
   }
 }
 $('#lockPad').addEventListener('click',e=>{const b=e.target.closest('button');if(b)lockKey(b.dataset.k||b.textContent.trim())});
-document.addEventListener('keydown',e=>{if(!lockState)return;if(/^\d$/.test(e.key))lockKey(e.key);else if(e.key==='Backspace')lockKey('back');e.preventDefault()},true);
+document.addEventListener('keydown',e=>{if(!lockState||document.querySelector('.cc-ov')||(e.target&&e.target.closest&&e.target.closest('input,textarea,select')&&!e.target.closest('#lock')))return;if(/^\d$/.test(e.key))lockKey(e.key);else if(e.key==='Backspace')lockKey('back');e.preventDefault()},true);
 $('#lockForgot').onclick=e=>{e.preventDefault();if(confirm('Effacer la connexion de cet appareil ? Tu devras te reconnecter avec ton e-mail et ton mot de passe, puis choisir un nouveau code. Tes documents ne sont pas touchés.')){wipeLogin();location.reload()}};
 async function askNewPin(){if(CRYPTO_OK&&sbUser&&!pinSet()) await openLock('set')}
 // reverrouille après 5 minutes en arrière-plan
