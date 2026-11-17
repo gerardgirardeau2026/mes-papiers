@@ -532,7 +532,7 @@ function render(){
   if(String(st.view).startsWith('cat:')&&!CAT[st.view.slice(4)])st.view='all';
   renderNav();renderYears();
   const v=st.view;
-  {const spe=v==='notes'||v==='mdp';['#fAnnee','#bScan','#topDrop','#bAdd'].forEach(x=>{const e=$(x);if(e)e.style.display=spe?'none':''});
+  {const spe=v==='notes'||v==='mdp';['#fAnnee','#bScan','#topDrop','#bAdd'].forEach(x=>{const e=$(x);if(e)e.style.display=spe?'none':''});if($('#q'))$('#q').style.visibility=v==='mdp'?'hidden':'';
    $('#q').placeholder=v==='notes'?'Rechercher dans mes notes…':v==='mdp'?'Rechercher un site, un identifiant…':'Rechercher (EDF, garage, 2025…)'}
   if(v==='notes'){$('#title').textContent='Notes';return renderNotes()}
   if(v==='mdp'){$('#title').textContent='Mots de passe';return renderMdp()}
@@ -848,6 +848,23 @@ async function chargerMdp(){
   const out=[];for(const it of (lsGet('mdp').items||[]).filter(x=>!x.supprime)){try{out.push({id:it.id,modifie:it.modifie,...await vDec(it.ct)})}catch(e){}}
   MDPC=out.sort((a,b)=>(a.site||'').localeCompare(b.site||'','fr',{sensitivity:'base'}));
 }
+const MS={tri:'az',filtre:'tous'};
+const SOUS=new Set(['www','www2','m','mobile','account','accounts','compte','comptes','login','signin','sign-in','auth','sso','secure','id','my','mon','moncompte','mon-compte','espace-client','espaceclient','client','clients','app','web','portail','connexion','identification','abonnes','particuliers','mail','webmail','fr','en']);
+const DEUX=new Set(['gouv','co','com','org','asso','net','gov','ac','edu']);
+function nomCourt(m){
+  const u=String(m.url||'').trim(),sv=String(m.site||'').trim();
+  let h='';try{h=new URL(/^https?:\/\//i.test(u)?u:'https://'+u).hostname}catch(e){}
+  if(!h&&/^[\w.-]+\.[a-z]{2,}$/i.test(sv))h=sv;
+  if(!h)return sv||'Sans nom';
+  if(sv&&!/^[\w.-]+\.[a-z]{2,}$/i.test(sv))return sv;          // nom choisi à la main : on le garde
+  let p=h.toLowerCase().replace(/^www\./,'').split('.');
+  const garder=DEUX.has(p[p.length-2])?3:2;
+  while(p.length>garder&&SOUS.has(p[0]))p.shift();
+  if(p.length>garder)p=p.slice(-garder);
+  return p.join('.');
+}
+const initiale=n=>{const c=(n||'?').normalize('NFD').replace(/[̀-ͯ]/g,'').charAt(0).toUpperCase();return /[A-Z]/.test(c)?c:'#'};
+const estFaible=p=>{let sc=0;if(p.length>=12)sc++;if(p.length>=16)sc++;if(/[a-z]/.test(p)&&/[A-Z]/.test(p))sc++;if(/\d/.test(p))sc++;if(/[^A-Za-z0-9]/.test(p))sc++;return sc<3};
 function forceMdp(p){if(!p)return '';let sc=0;if(p.length>=12)sc++;if(p.length>=16)sc++;if(/[a-z]/.test(p)&&/[A-Z]/.test(p))sc++;if(/\d/.test(p))sc++;if(/[^A-Za-z0-9]/.test(p))sc++;
   return sc>=5?'💪 Très solide':sc>=4?'👍 Solide':sc>=3?'😐 Moyen':'⚠️ Faible : allonge-le ou mélange lettres, chiffres et symboles'}
 function genMdp(n=16){const A='ABCDEFGHJKLMNPQRSTUVWXYZ',a='abcdefghijkmnopqrstuvwxyz',d='23456789',y='!?@#$%&*+-=';const all=A+a+d+y;
@@ -881,14 +898,31 @@ function renderMdp(){
   if(!MDPC){$('#view').innerHTML='<p class="muted">Ouverture…</p>';chargerMdp().then(()=>{if(st.view==='mdp')render()});return}
   renderNav();
   const q=(st.q||'').toLowerCase();
-  const l=MDPC.filter(m=>!q||[m.site,m.url,m.login,m.note].join(' ').toLowerCase().includes(q));
+  const compte={};MDPC.forEach(m=>{if(m.mdp)compte[m.mdp]=(compte[m.mdp]||0)+1});
+  let l=MDPC.filter(m=>!q||[m.site,m.url,m.login,m.note].join(' ').toLowerCase().includes(q));
+  if(MS.filtre==='faibles')l=l.filter(m=>m.mdp&&estFaible(m.mdp));
+  if(MS.filtre==='reutil')l=l.filter(m=>m.mdp&&compte[m.mdp]>1);
+  if(MS.filtre==='vides')l=l.filter(m=>!m.mdp);
+  l=l.map(m=>({...m,_n:nomCourt(m)}));
+  if(MS.tri==='za')l.sort((a,b)=>b._n.localeCompare(a._n,'fr',{sensitivity:'base'}));
+  else if(MS.tri==='recent')l.sort((a,b)=>(b.modifie||'')>(a.modifie||'')?1:-1);
+  else l.sort((a,b)=>a._n.localeCompare(b._n,'fr',{sensitivity:'base'}));
+  const nF=MDPC.filter(m=>m.mdp&&estFaible(m.mdp)).length,nR=MDPC.filter(m=>m.mdp&&compte[m.mdp]>1).length;
+  const lettres=[...new Set(l.map(m=>initiale(m._n)))];
   $('#view').innerHTML=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
     <button class="btn pri" id="mNew">＋ Ajouter</button>
     <label class="btn" style="cursor:pointer">📥 Importer du navigateur<input type="file" id="mCsv" accept=".csv,text/csv" hidden></label>
     ${SERVICE_V?'':'<button class="btn" id="mChg">🔁 Changer le mot de passe maître</button><button class="btn" id="mLock">🔒 Verrouiller</button>'}
-    <span class="muted" style="margin-left:auto">${l.length} mot${l.length>1?'s':''} de passe</span></div>`+
+    </div>
+    <div class="box" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;margin-bottom:10px">
+      <input id="mQ" type="search" placeholder="🔍 Tape le nom d'un site (amazon, impots, banque…)" value="${esc(st.q||'')}" autocomplete="off" style="flex:1;min-width:220px;font-size:16px;padding:10px 12px;border:2px solid var(--accent,#2f6b5a);border-radius:10px">
+      <select id="mTri" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="az">Tri : A → Z</option><option value="za">Tri : Z → A</option><option value="recent">Tri : derniers modifiés</option></select>
+      <select id="mFil" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="tous">Tous (${MDPC.length})</option><option value="faibles">⚠️ Faibles (${nF})</option><option value="reutil">♻️ Utilisés plusieurs fois (${nR})</option><option value="vides">Sans mot de passe</option></select>
+      <span class="muted" id="mNb" style="margin-left:auto">${l.length} résultat${l.length>1?'s':''}</span>
+      ${MS.tri!=='recent'&&lettres.length>6?`<div class="lettres" style="flex-basis:100%;display:flex;flex-wrap:wrap;gap:3px">${lettres.map(x=>`<button data-l="${x}" style="min-width:30px;padding:4px 6px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;font-weight:600">${x}</button>`).join('')}</div>`:''}
+    </div>`+
    (l.length?`<div class="box" style="padding:6px 12px"><table class="mdp"><tbody>${l.map(m=>`<tr data-m="${m.id}">
-     <td class="site" data-a="edit">${esc(m.site||'—')}${m.url?`<small>${esc(m.url)}</small>`:''}</td>
+     <td class="site" data-a="edit" data-init="${initiale(m._n)}">${esc(m._n)}${m.mdp&&estFaible(m.mdp)?' <span title="Mot de passe faible" style="font-size:12px">⚠️</span>':''}${m.mdp&&compte[m.mdp]>1?' <span title="Ce mot de passe sert sur plusieurs sites" style="font-size:12px">♻️</span>':''}<small>${esc(m.url||(m.site!==m._n?m.site:''))}</small></td>
      <td class="lg cache-tel" title="${esc(m.login||'')}">${esc(m.login||'')}</td>
      <td style="white-space:nowrap">${m.login?'<button data-a="cl" title="Copier l\'identifiant">👤 📋</button>':''}</td>
      <td class="pw cache-tel">${VUS.has(m.id)?esc(m.mdp||''):(m.mdp?'••••••••':'')}</td>
@@ -896,6 +930,12 @@ function renderMdp(){
      :`<div class="empty"><b>${q?'Aucun résultat':'Ton coffre est vide'}</b>${q?'':'Clique sur « ＋ Ajouter », ou récupère d\'un coup les mots de passe enregistrés dans ton navigateur avec « 📥 Importer du navigateur ».'}</div>`)+
    `<p class="muted" style="font-size:12.5px;margin-top:12px">🔐 Tes mots de passe sont chiffrés avant d'être enregistrés en ligne.${SERVICE_V?'':' Il se reverrouille tout seul après 10 minutes sans activité.'} Astuce : « 🎲 Générer » invente un mot de passe solide, différent pour chaque site.</p>`;
   $('#mNew').onclick=()=>ouvrirMdp(null);
+  $('#mTri').value=MS.tri;$('#mFil').value=MS.filtre;
+  $('#mTri').onchange=e=>{MS.tri=e.target.value;render()};
+  $('#mFil').onchange=e=>{MS.filtre=e.target.value;render()};
+  $('#mQ').oninput=e=>{const v=e.target.value,pos=e.target.selectionStart;st.q=v;$('#q').value=v;render();const i=$('#mQ');i.focus();try{i.setSelectionRange(pos,pos)}catch(x){}};
+  if(document.activeElement===document.body&&!matchMedia('(max-width:760px)').matches)$('#mQ').focus();
+  $('#view').querySelectorAll('.lettres button').forEach(b=>b.onclick=()=>{const t=$('#view').querySelector(`td[data-init="${b.dataset.l}"]`);if(t){t.scrollIntoView({behavior:'smooth',block:'start'});t.parentNode.style.background='#fff7d6';setTimeout(()=>t.parentNode.style.background='',1500)}});
   $('#mCsv').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importerCsv(f)};
   if($('#mLock'))$('#mLock').onclick=()=>{verrouillerCoffre();toast('🔒 Coffre verrouillé')};
   if($('#mChg'))$('#mChg').onclick=changerMaitre;
