@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="comptes.webmanifest">
+<link rel="icon" type="image/png" href="icone-comptes-192.png">
+<link rel="apple-touch-icon" href="icone-comptes-180.png">
+<meta name="theme-color" content="#2f6b5a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Comptes">
 <title>Mes Comptes</title>
 <style>
 :root{--sep:#d6d1c4;--th-bg:#d6e4dc;--th-fg:#24493f;--zebra:#f6f4ef;--hover:#eeebe3;--side:#fbfaf7;--tot:#f3f1ec;--sol:#fbfaf7;--bg:#f5f3ee;--panel:#fff;--ink:#1f2328;--muted:#6b6f76;--line:#e3dfd5;--accent:#2f5d50;--accent-soft:#e7efea;--warn:#b5562a;--warn-soft:#fbede4;--danger:#a83232;--pos:#1d7a46;--neg:#b23b3b;--radius:10px;--shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.04)}
@@ -1481,7 +1488,39 @@ function vD2072(){
 /* =================== comptes & réglages =================== */
 const LISTE_BANQUES=[['Crédit Mutuel',1],['Banque Populaire',1],['BNP Paribas',1],['CIC',1],['Crédit Agricole',1],['Société Générale',1],['LCL','OFX'],['La Banque Postale',1],['Caisse d\'Épargne',1],['Boursobank',1],['Hello bank!',1],['Fortuneo',1],['Autre','OFX']];
 function nouveauCode(){let n=1;const ids=new Set(D.comptes.map(c=>c.id));while(ids.has('CPT'+n))n++;return 'CPT'+n}
+/* ---------- raccourci sur l'écran d'accueil (téléphone) ---------- */
+let PWA_EVT=null;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();PWA_EVT=e});
+addEventListener('appinstalled',()=>{PWA_EVT=null;toast('✅ Raccourci ajouté sur l\'écran d\'accueil');if(typeof st!=='undefined'&&st.view==='reglages')render()});
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('sw.js').catch(()=>{});
+const pwaInstallee=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+function boxRaccourci(){
+  if(pwaInstallee())return `<div class="box"><h2>📱 Raccourci sur le téléphone</h2><p style="margin:0">✅ Tu utilises déjà Mes Comptes depuis son icône.</p></div>`;
+  return `<div class="box" id="pwaBox"><h2>📱 Raccourci sur le téléphone</h2>
+   <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><img src="icone-comptes-192.png" alt="" width="60" height="60" style="border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.2)">
+   <div style="flex:1;min-width:200px"><p class="muted" style="margin:0 0 8px">Mets l'icône <b>€ à la coccinelle</b> sur l'écran d'accueil : Mes Comptes s'ouvrira comme une vraie application, en plein écran.</p>
+   <button class="btn pri" id="pwaBtn">➕ Ajouter le raccourci</button></div></div>
+   <p id="pwaAide" style="display:none;margin:12px 0 0;padding:10px 12px;border-radius:8px;background:var(--zebra)"></p></div>`;
+}
+function bindRaccourci(){
+  const b=$('#pwaBtn');if(!b)return;
+  b.onclick=async()=>{
+    if(PWA_EVT){const e=PWA_EVT;PWA_EVT=null;e.prompt();try{const r=await e.userChoice;if(r.outcome!=='accepted')toast('Raccourci non ajouté')}catch(x){}return}
+    const ua=navigator.userAgent,ios=/iphone|ipad|ipod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+    const a=$('#pwaAide');a.style.display='block';
+    a.innerHTML=ios
+      ?'<b>Sur iPhone / iPad :</b> touche le bouton <b>Partager</b> (le carré avec une flèche vers le haut, en bas de l\'écran dans Safari), fais défiler et choisis <b>« Sur l\'écran d\'accueil »</b>, puis <b>Ajouter</b>.'
+      :/android/i.test(ua)
+        ?'<b>Sur Android :</b> ouvre le menu <b>⋮</b> de Chrome (en haut à droite), puis <b>« Ajouter à l\'écran d\'accueil »</b> (ou <b>« Installer l\'application »</b>), puis <b>Installer</b>.'
+        :'<b>Sur l\'ordinateur :</b> clique sur l\'icône d\'installation dans la barre d\'adresse, ou menu <b>⋮</b> → <b>« Installer… »</b>. Sur le téléphone, ouvre cette page et reviens ici.';
+  };
+}
 function vReglages(){
+  vReglagesBase();
+  const m=matchMedia('(max-width:820px)').matches;
+  $('#view').insertAdjacentHTML(m?'afterbegin':'beforeend',boxRaccourci());bindRaccourci();
+}
+function vReglagesBase(){
   const ds=dossier(),inf=ds.infos||{};
   $('#view').innerHTML=(SANS_DOSSIER?`<div class="box" style="border-color:#efc9b3;background:var(--warn-soft)"><b>Dossiers non activés.</b> Pour gérer plusieurs dossiers (SCI, belle-maman…), exécute le script <b>3-dossiers.sql</b> dans Supabase puis recharge la page.</div>`:`<div class="box"><h2>Dossier</h2>
    <div class="filters" style="margin:0"><label>Nom <input class="f" id="dNom" value="${esc(ds.nom)}"></label>
