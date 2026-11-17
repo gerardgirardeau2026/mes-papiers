@@ -182,6 +182,7 @@ body[data-theme=sombre] #rubPick mark{background:#6b5a1f}
 input.num,.in.num{text-align:right}
 tbody tr.dblc>td{background:#fbe1dc!important}
 body[data-theme=sombre] tbody tr.dblc>td{background:#4a2a26!important}
+.cherche{border:1px solid var(--line,#ddd);background:#fff;border-radius:6px;padding:1px 5px;margin-left:6px;cursor:pointer;font-size:12px;vertical-align:middle}.cherche:hover{background:#eef3ff}
 </style>
 </head>
 <body>
@@ -423,6 +424,22 @@ function index(){
 }
 const rubOf=n=>RUB.get(norm(n));
 const aClasser=o=>!rubOf(o.rubrique);
+/* 🔎 chercher un libellé inconnu sur Internet */
+function libelleCherche(l){
+  let s=String(l||'');const p=s.split(':');
+  if(p.length>1&&p[0].trim().length>3&&s.indexOf(p[0].trim(),p[0].length)>0)s=p[0];          // « X:X:… » répété
+  s=s.replace(/\bCB\s*\*+\s*\d+/gi,' ').replace(/\*+\d+/g,' ').replace(/-?\d+[.,]\d{2}\s*EUR.*$/i,' ').replace(/\b\d+\s*EURO\s*=.*$/i,' ')
+     .replace(/\b(PRLV|PRELEVEMENT|SEPA|CB|CARTE|PAIEMENT|PAIE|VIR|VIREMENT|INST|ACHAT|FACT|FACTURE|DE|EUR)\b/gi,' ')
+     .replace(/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/g,' ').replace(/\b[A-Z]{2}\d{2}[A-Z0-9]{4,}\b/g,' ').replace(/\bECH\/\S*/gi,' ').replace(/\b\d{4,}\b/g,' ').replace(/[*:]+/g,' ').replace(/\s+/g,' ').trim();
+  return s||String(l||'').slice(0,60);
+}
+document.addEventListener('click',async e=>{
+  const b=e.target.closest&&e.target.closest('[data-cherche]');if(!b)return;e.preventDefault();e.stopPropagation();
+  const q=libelleCherche(b.dataset.cherche);
+  try{await navigator.clipboard.writeText(q)}catch(x){}
+  window.open('https://www.google.com/search?q='+encodeURIComponent(q),'_blank','noopener');
+  toast('🔎 Recherche ouverte · « '+q+' » est copié (Ctrl+V pour le recoller)');
+},true);
 function classer(lib){const L=norm(lib);for(const r of REG)if(L.includes(r.m))return rubOf(r.rubrique)?.nom||r.rubrique;return ''}
 const compte=id=>D.comptes.find(c=>c.id===id);
 const cNom=id=>compte(id)?.nom||id;
@@ -624,7 +641,7 @@ function vOps(){
   <p class="muted" style="margin:-4px 0 10px;font-size:13.5px">${list.length} opération${list.length>1?'s':''} · total <b class="${tot<0?'neg':'pos'}">${eur(tot)}</b>${single?` · solde actuel <b>${eur(soldeActuel(f.compte))}</b>`:''}${f.rub==='__dblcarte'&&list.length?` <button class="btn" id="bDelDbl" style="margin-left:10px;border-color:var(--danger);color:var(--danger)">🗑 Supprimer ces ${list.length} doublons</button>`:''}${f.rub!=='__dblcarte'&&list.some(o=>dblCarte().has(o.id))?` · <span class="badge b-warn clic" id="bVoirDbl">⚠ ${list.filter(o=>dblCarte().has(o.id)).length} doublon(s) avec une carte</span>`:''}</p>
   ${list.length?`<div class="tw"><table class="opst nl"><thead><tr><th class="ln hide-m">N°</th><th>Date</th>${f.compte?'':'<th class="hide-m">Compte</th>'}<th>Libellé</th><th class="num">Montant</th><th style="min-width:190px">Rubrique</th>${single?'<th class="num hide-m">Solde</th>':''}<th class="hide-m"></th></tr></thead>
   <tbody>${rows.slice(0,st.lim).map(({o,s})=>`<tr data-id="${o.id}" ${dblCarte().has(o.id)?'class="dblc"':''}><td class="ln hide-m"></td><td class="d" style="white-space:nowrap">${fdate(o.date)}</td>${f.compte?'':`<td class="hide-m muted" style="white-space:nowrap">${esc(cNom(o.compte))}</td>`}
-    <td class="clic lib" data-edit="${o.id}">${esc(o.libelle)}${dblCarte().has(o.id)?` <span class="badge b-warn">doublon : aussi sur ${esc(dblCarte().get(o.id))}</span>`:''}${o.note?`<div class="muted" style="font-size:12px">${esc(o.note)}</div>`:''}</td>
+    <td class="clic lib" data-edit="${o.id}">${esc(o.libelle)}${aClasser(o)?` <button type="button" class="cherche" data-cherche="${esc(o.libelle)}" title="Je ne sais plus ce que c'est : chercher sur Internet (le libellé est aussi copié)">🔎</button>`:''}${dblCarte().has(o.id)?` <span class="badge b-warn">doublon : aussi sur ${esc(dblCarte().get(o.id))}</span>`:''}${o.note?`<div class="muted" style="font-size:12px">${esc(o.note)}</div>`:''}</td>
     <td class="num mt ${o.montant<0?'neg':'pos'}">${eur(o.montant)}</td>
     <td class="rb">${rubBtn(o.rubrique,`data-rub="${o.id}"`)}</td>
     ${single?`<td class="num hide-m ${s<0?'neg':''}">${eur(s)}</td>`:''}<td class="hide-m">${o.doc_id?'📎':''}</td></tr>`).join('')}</tbody></table></div>
@@ -1042,7 +1059,7 @@ function renderImport0(){
       return `<button class="btn" id="iDecoche" title="Décoche ${lab}">☐ Décocher ${lab}</button><button class="btn" id="iCoche" title="Coche ${lab}">☑ Cocher ${lab}</button>`})()}
     ${filt?`<span class="muted" style="font-size:13px">${vis} ligne(s) affichée(s) sur ${L.length}</span> <button class="btn" id="iRaz">✕ Effacer les filtres</button>`:''}</div>`})()}
   <div class="tw" style="max-height:60vh"><table><thead><tr><th class="ln">N°</th><th style="width:30px"><input type="checkbox" id="iAll" title="Cocher / décocher les lignes affichées" ${L.filter(impVisible).every(l=>l.ok||l.dbl)?'checked':''}></th><th>Date</th><th>Libellé</th><th class="num">Montant</th><th style="min-width:200px">Rubrique</th><th>Retenir pour la suite</th></tr></thead>
-  <tbody>${L.map((l,i)=>!impVisible(l)?'':`<tr style="${l.dbl?'opacity:.5':''}"><td class="ln">${i+1}</td><td><input type="checkbox" data-i="${i}" data-k="ok" ${l.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(l.date)}</td><td>${esc(l.lib)}${l.dbl?` <span class="badge b-grey">${esc(l.why||'déjà là')}</span>`:''}</td>
+  <tbody>${L.map((l,i)=>!impVisible(l)?'':`<tr style="${l.dbl?'opacity:.5':''}"><td class="ln">${i+1}</td><td><input type="checkbox" data-i="${i}" data-k="ok" ${l.ok?'checked':''}></td><td style="white-space:nowrap">${fdate(l.date)}</td><td>${esc(l.lib)}${rubOf(l.rub)?'':` <button type="button" class="cherche" data-cherche="${esc(l.lib)}" title="Je ne sais plus ce que c'est : chercher sur Internet (le libellé est aussi copié)">🔎</button>`}${l.dbl?` <span class="badge b-grey">${esc(l.why||'déjà là')}</span>`:''}</td>
     <td class="num ${l.mt<0?'neg':'pos'}">${eur(l.mt)}</td>
     <td>${rubBtn(l.rub,`data-ib="${i}"`)}</td>
     <td>${l.auto?'<span class="muted" style="font-size:12px">règle existante</span>':`<input class="in" data-i="${i}" data-k="motif" value="${esc(l.motif)}" placeholder="${rubOf(l.rub)?'motif à retenir':''}" ${rubOf(l.rub)?'':'disabled'}>`}</td></tr>`).join('')}</tbody></table></div>
