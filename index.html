@@ -863,6 +863,11 @@ function nomCourt(m){
   if(p.length>garder)p=p.slice(-garder);
   return p.join('.');
 }
+function defilerVers(el){   // fait défiler seulement la zone de la liste, sans bouger le reste de la page
+  let c=el.parentElement;while(c&&c!==document.body){const st=getComputedStyle(c);if(/(auto|scroll)/.test(st.overflowY)&&c.scrollHeight>c.clientHeight)break;c=c.parentElement}
+  if(c&&c!==document.body){const d=el.getBoundingClientRect().top-c.getBoundingClientRect().top-12;c.scrollBy({top:d,behavior:'smooth'})}
+  else{scrollBy({top:el.getBoundingClientRect().top-12,behavior:'smooth'})}
+}
 const initiale=n=>{const c=(n||'?').normalize('NFD').replace(/[̀-ͯ]/g,'').charAt(0).toUpperCase();return /[A-Z]/.test(c)?c:'#'};
 const estFaible=p=>{let sc=0;if(p.length>=12)sc++;if(p.length>=16)sc++;if(/[a-z]/.test(p)&&/[A-Z]/.test(p))sc++;if(/\d/.test(p))sc++;if(/[^A-Za-z0-9]/.test(p))sc++;return sc<3};
 function forceMdp(p){if(!p)return '';let sc=0;if(p.length>=12)sc++;if(p.length>=16)sc++;if(/[a-z]/.test(p)&&/[A-Z]/.test(p))sc++;if(/\d/.test(p))sc++;if(/[^A-Za-z0-9]/.test(p))sc++;
@@ -935,7 +940,7 @@ function renderMdp(){
   $('#mFil').onchange=e=>{MS.filtre=e.target.value;render()};
   $('#mQ').oninput=e=>{const v=e.target.value,pos=e.target.selectionStart;st.q=v;$('#q').value=v;render();const i=$('#mQ');i.focus();try{i.setSelectionRange(pos,pos)}catch(x){}};
   if(document.activeElement===document.body&&!matchMedia('(max-width:760px)').matches)$('#mQ').focus();
-  $('#view').querySelectorAll('.lettres button').forEach(b=>b.onclick=()=>{const t=$('#view').querySelector(`td[data-init="${b.dataset.l}"]`);if(t){t.scrollIntoView({behavior:'smooth',block:'start'});t.parentNode.style.background='#fff7d6';setTimeout(()=>t.parentNode.style.background='',1500)}});
+  $('#view').querySelectorAll('.lettres button').forEach(b=>b.onclick=()=>{const t=$('#view').querySelector(`td[data-init="${b.dataset.l}"]`);if(t){defilerVers(t.parentNode);t.parentNode.style.background='#fff7d6';setTimeout(()=>t.parentNode.style.background='',1500)}});
   $('#mCsv').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importerCsv(f)};
   if($('#mLock'))$('#mLock').onclick=()=>{verrouillerCoffre();toast('🔒 Coffre verrouillé')};
   if($('#mChg'))$('#mChg').onclick=changerMaitre;
