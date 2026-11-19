@@ -917,6 +917,7 @@ function renderMdp(){
   $('#view').innerHTML=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
     <button class="btn pri" id="mNew">＋ Ajouter</button>
     <label class="btn" style="cursor:pointer">📥 Importer du navigateur<input type="file" id="mCsv" accept=".csv,text/csv" hidden></label>
+    <a class="btn" style="text-decoration:none;color:inherit" href="https://app.ruedujour.fr/extension.html" target="_blank" rel="noopener" title="L'extension qui remplit tes mots de passe sur les sites (Brave, Chrome, Edge)">🐞 Installer l'extension</a>
     ${SERVICE_V?'':'<button class="btn" id="mChg">🔁 Changer le mot de passe maître</button><button class="btn" id="mLock">🔒 Verrouiller</button>'}
     </div>
     <div class="box" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;margin-bottom:10px">
@@ -933,7 +934,6 @@ function renderMdp(){
      <td class="pw cache-tel">${VUS.has(m.id)?esc(m.mdp||''):(m.mdp?'••••••••':'')}</td>
      <td style="white-space:nowrap;text-align:right">${m.mdp?`<button data-a="voir" title="Afficher / masquer">${VUS.has(m.id)?'🙈':'👁'}</button> <button data-a="cp" title="Copier le mot de passe">🔑 📋</button>`:''} ${m.url?`<button data-a="go" title="Ouvrir le site">↗</button>`:''} <button data-a="edit" title="Modifier">✏️</button></td></tr>`).join('')}</tbody></table></div>`
      :`<div class="empty"><b>${q?'Aucun résultat':'Ton coffre est vide'}</b>${q?'':'Clique sur « ＋ Ajouter », ou récupère d\'un coup les mots de passe enregistrés dans ton navigateur avec « 📥 Importer du navigateur ».'}</div>`)+
-   `<div class="box" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px;padding:12px 14px"><span style="font-size:26px">🐞</span><div style="flex:1;min-width:220px"><b>Coccinelle Mot de passe</b> pour Brave, Chrome et Edge<br><span class="muted" style="font-size:13px">Remplit tes mots de passe sur les sites, en propose de solides et les enregistre ici.</span></div><a class="btn" href="https://app.ruedujour.fr/extension.html" target="_blank" rel="noopener">⬇️ Installer l'extension</a></div>`+
    `<p class="muted" style="font-size:12.5px;margin-top:12px">🔐 Tes mots de passe sont chiffrés avant d'être enregistrés en ligne.${SERVICE_V?'':' Il se reverrouille tout seul après 10 minutes sans activité.'} Astuce : « 🎲 Générer » invente un mot de passe solide, différent pour chaque site.</p>`;
   $('#mNew').onclick=()=>ouvrirMdp(null);
   $('#mTri').value=MS.tri;$('#mFil').value=MS.filtre;
