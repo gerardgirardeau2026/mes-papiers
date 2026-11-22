@@ -125,6 +125,12 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .preview .tabs button.on{border-color:var(--accent);color:var(--accent);font-weight:600}
 .preview .pv{flex:1;display:flex;align-items:center;justify-content:center;padding:8px}
 .preview iframe{width:100%;height:65vh;border:0;background:#fff;border-radius:6px}
+.pdfv{width:100%;height:65vh;overflow:auto;background:#e6e6e3;border-radius:6px;padding:8px;-webkit-overflow-scrolling:touch}
+#fv .fvb .pdfv{height:100%;border-radius:0}
+.pdfv canvas{display:block;width:100%;height:auto;margin:0 auto 8px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.pdfv .pdfo{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:4px 0 6px}
+.pdfv .pdfo button{border:1px solid #c9ccc7;background:#fff;border-radius:8px;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer}
+.pdfv p{text-align:center;color:#666;margin:24px 8px}
 .preview img{max-width:100%;max-height:65vh;border-radius:6px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2328;color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:20}
 .toast.on{opacity:1}
@@ -650,6 +656,7 @@ async function fvShow(i){
   let blob=p.blob;
   if(!blob){$('#fvB').innerHTML='<p>Chargement…</p>';try{blob=await getBlob(editing,p)}catch(e){$('#fvB').innerHTML='<p>Fichier injoignable pour l\'instant.</p>';return}if(fvIdx!==i)return}
   if(fvUrl)URL.revokeObjectURL(fvUrl);fvUrl=URL.createObjectURL(blob);fvZoom=1;
+  if(p.type==='application/pdf'&&!pdfNatif()){pdfDansZone($('#fvB'),blob,p.nom);return}
   $('#fvB').innerHTML=isImg?`<img src="${fvUrl}" alt="">`:p.type==='application/pdf'||p.type.startsWith('text/')?`<iframe src="${fvUrl}${p.type==='application/pdf'?'#view=FitH':''}"></iframe>`:'<p>Aperçu impossible pour ce type de fichier.</p>';
 }
 function fvClose(){$('#fv').classList.remove('on');$('#ovForm').classList.remove('avecFv');$('#fvB').innerHTML='';if(fvUrl){URL.revokeObjectURL(fvUrl);fvUrl=null}}
@@ -723,6 +730,7 @@ async function showPv(d,i){
   if(f.blob) blob=f.blob;
   else{$('#pv').innerHTML='<p class="muted">Lecture sur le PC…</p>';try{blob=await getBlob(d,f)}catch(e){$('#pv').innerHTML='<p class="muted">Ce document est rangé sur ton PC, qui est injoignable pour l\'instant.</p>';return}}
   if(detId!==d.id)return;
+  if(f.type==='application/pdf'&&!pdfNatif()){pdfDansZone($('#pv'),blob,f.nom,()=>detId===d.id);return}
   const u=URL.createObjectURL(blob);urls.push(u);
   $('#pv').innerHTML=f.type.startsWith('image/')?`<img src="${u}" alt="">`:f.type==='application/pdf'||f.type.startsWith('text/')?`<iframe src="${u}"></iframe>`:`<p class="muted">Aperçu impossible pour ce type de fichier. <a href="#" data-dl="${i}">Le télécharger</a></p>`;
 }
@@ -1106,6 +1114,43 @@ const LIB=LOCAL_LIB?{tess:absLib('tesseract.min.js'),pdf:absLib('pdf.min.js'),pd
   :{tess:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',pdf:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',pdfWorker:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',sb:'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js'};
 const scripts={};
 function loadScript(src){return scripts[src]||(scripts[src]=new Promise((ok,ko)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>{delete scripts[src];ko(new Error('outil de lecture introuvable'))};document.head.appendChild(s)}))}
+/* ---------- lecteur PDF intégré : les téléphones (Chrome, Brave Android) n'affichent pas les PDF dans une page ---------- */
+function pdfNatif(){
+  if(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent))return false;
+  return navigator.pdfViewerEnabled!==false;
+}
+let pdfJeton=0;
+async function pdfDansZone(el,blob,nom,encore){
+  const j=++pdfJeton,toujours=()=>j===pdfJeton&&(!encore||encore());
+  el.innerHTML='<div class="pdfv"><p>Ouverture du PDF…</p></div>';
+  const z=el.firstChild;
+  try{
+    await loadScript(LIB.pdf);pdfjsLib.GlobalWorkerOptions.workerSrc=LIB.pdfWorker;
+    const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await blob.arrayBuffer())}).promise;
+    if(!toujours())return;
+    z.innerHTML='';
+    const barre=document.createElement('div');barre.className='pdfo';
+    barre.innerHTML='<button type="button" data-pz="-">－</button><button type="button" data-pz="+">＋</button><button type="button" data-pz="o">📄 Ouvrir dans une appli PDF</button>';
+    z.appendChild(barre);
+    let zoom=1;const pages=[];
+    const dessiner=async()=>{
+      const larg=Math.max(200,z.clientWidth-16),dpr=Math.min(3,window.devicePixelRatio||1);
+      for(let n=1;n<=pdf.numPages;n++){
+        if(!toujours())return;
+        const pg=await pdf.getPage(n),v1=pg.getViewport({scale:1}),k=larg*zoom/v1.width,v=pg.getViewport({scale:k*dpr});
+        let c=pages[n-1];if(!c){c=document.createElement('canvas');pages[n-1]=c;z.appendChild(c)}
+        c.width=Math.floor(v.width);c.height=Math.floor(v.height);c.style.width=Math.floor(larg*zoom)+'px';c.style.maxWidth='none';
+        await pg.render({canvasContext:c.getContext('2d'),viewport:v}).promise;
+      }
+    };
+    barre.onclick=e=>{const a=e.target.dataset.pz;if(!a)return;
+      if(a==='o'){download(blob,nom||'document.pdf');return}
+      zoom=Math.min(4,Math.max(1,zoom*(a==='+'?1.4:1/1.4)));dessiner()};
+    await dessiner();
+  }catch(e){
+    if(toujours())z.innerHTML='<p>Ce PDF ne peut pas être affiché ici.</p><div class="pdfo"><button type="button">📄 Ouvrir dans une appli PDF</button></div>',z.querySelector('button').onclick=()=>download(blob,nom||'document.pdf');
+  }
+}
 let ocrWorker=null,ocrProgress=()=>{};
 async function getOcr(){
   if(ocrWorker) return ocrWorker;
