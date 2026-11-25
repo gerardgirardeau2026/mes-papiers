@@ -452,7 +452,10 @@ table.imp tr.done-deja td{opacity:.55}
 .ctc .f1{color:#3d4a44;font-size:14px;margin-top:2px}
 .ctc .f2{font-size:14px;margin-top:8px;display:flex;flex-direction:column;gap:3px}
 .ctc .f2 a{color:var(--accent);text-decoration:none;overflow-wrap:anywhere}
-.ctc small{display:block;color:var(--muted);font-size:12px;margin-top:8px}
+.ctc small{display:block;color:var(--muted);font-size:12px}
+.ctc .kbas{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.ctc .kmod{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 10px;font:inherit;font-size:13px;color:var(--accent);cursor:pointer;flex:none}
+.ctc .kmod:hover{background:var(--accent-soft)}
 .ctc .nt{margin:8px 0 0;font-size:13.5px;color:#555;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 #ovCtc label{display:block;font-size:13px;color:var(--muted);margin-top:10px}
 #ovCtc input,#ovCtc textarea{display:block;width:100%;margin-top:3px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:15px/1.4 inherit}
@@ -917,7 +920,7 @@ function renderContacts(){
       `<div class="f1">${esc([c.fonction,c.mairie].filter(Boolean).join(' · '))}${c.ville?(c.fonction||c.mairie?' — ':'')+esc(c.ville):''}</div>`+
       `<div class="f2">${c.tel?`<a href="tel:${esc(telLienK(c.tel))}" data-lien>📞 ${esc(c.tel)}</a>`:''}${c.email?`<a href="mailto:${esc(c.email)}" data-lien>✉️ ${esc(c.email)}</a>`:''}</div>`+
       (c.note?`<p class="nt">${esc(c.note)}</p>`:'')+
-      `<small>${esc([c.evenement,c.rencontre?new Date(c.rencontre).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):''].filter(Boolean).join(' · '))}</small></div>`).join('')}</div>`
+      `<div class="kbas"><small>${esc([c.evenement,c.rencontre?new Date(c.rencontre).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):''].filter(Boolean).join(' · '))}</small><button type="button" class="kmod">✏️ Modifier</button></div></div>`).join('')}</div>`
      :`<div class="empty"><b>${q?'Aucun contact trouvé':'Aucun contact pour l\'instant'}</b>Les personnes enregistrées avec Coccinelle Carte arrivent ici toutes seules. Tu peux aussi cliquer sur « ＋ Nouveau contact ».</div>`);
   $('#kNew').onclick=()=>ouvrirCtc(null);
   $('#kCsv').onclick=()=>exporterContacts(l);
