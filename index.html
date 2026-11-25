@@ -935,8 +935,11 @@ function microMsg(t){const m=$('#kMicroMsg');m.style.display=t?'block':'none';m.
 function microStop(){if(ctcReco){try{ctcReco.stop()}catch(e){}ctcReco=null}$('#kMicro').textContent='🎤 Dicter'}
 $('#kMicro').onclick=()=>{
   if(ctcReco)return microStop();
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition,ta=$('#kNote');
-  const clavier='Touche la case de la note, puis le <b>micro 🎤 de ton clavier</b> pour dicter.';
+  const SR=(navigator.brave?null:(window.SpeechRecognition||window.webkitSpeechRecognition)),ta=$('#kNote');
+  const mobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent),mac=/Mac/i.test(navigator.platform);
+  const clavier=mobile?'Touche la case de la note, puis le <b>micro 🎤 de ton clavier</b> pour dicter.'
+    :mac?'Clique dans la note, puis appuie <b>deux fois sur la touche Fn</b> (ou 🎤) pour dicter.'
+    :'Clique dans la note, puis appuie sur <b>Windows + H</b> : la dictée de Windows s\'ouvre, parle, le texte s\'écrit dans la note.';
   if(!SR){ta.focus();microMsg(clavier);return}
   const r=new SR();r.lang='fr-FR';r.continuous=true;r.interimResults=true;
   const avant=ta.value.trim();let fini='';
