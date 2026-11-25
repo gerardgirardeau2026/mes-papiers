@@ -404,7 +404,10 @@ table.imp tr.done-deja td{opacity:.55}
       <div class="duo"><label>Mairie / organisme<input id="kMairie" placeholder="ex. Mairie de Senlis"></label><label>Ville<input id="kVille" placeholder="ex. Senlis (60)"></label></div>
       <div class="duo"><label>Téléphone<input id="kTel" type="tel" inputmode="tel"></label><label>E-mail<input id="kEmail" type="email" inputmode="email" autocapitalize="off"></label></div>
       <div class="duo"><label>Rencontré à<input id="kEvt" placeholder="ex. Salon des maires 2026"></label><label>Le<input id="kDate" type="date"></label></div>
-      <label>Note<textarea id="kNote" rows="3" placeholder="Ce qui a été dit, ce qu'il faut faire…"></textarea></label>
+      <label style="display:flex;align-items:center;justify-content:space-between;gap:8px">Note — ce qui a été dit, la suite à donner<button type="button" class="btn" id="kMicro" style="padding:6px 12px;font-size:14px">🎤 Dicter</button></label>
+      <textarea id="kNote" rows="4" placeholder="Ex. : très intéressé par le disque bleu virtuel, veut une démo en janvier…"></textarea>
+      <p class="muted" id="kMicroMsg" style="font-size:13px;margin:6px 0 0;display:none"></p>
+      <button type="button" class="btn" id="kClaude" style="width:100%;margin-top:12px">📋 Copier pour Claude (préparer l'e-mail)</button>
     </div>
     <div class="mf"><button class="btn" id="kSuppr" style="margin-right:auto;color:var(--danger,#c0392b)">🗑 Supprimer</button><button class="btn" data-close>Annuler</button><button class="btn pri" id="kSave">Enregistrer</button></div>
   </div>
@@ -926,15 +929,46 @@ function renderContacts(){
   $('#kCsv').onclick=()=>exporterContacts(l);
   $('#view').querySelectorAll('[data-ctc]').forEach(e=>e.onclick=ev=>{if(ev.target.closest('[data-lien]'))return;ouvrirCtc(e.dataset.ctc)});
 }
+/* 🎤 dictée de la note (reconnaissance vocale du navigateur, sinon le micro du clavier) */
+let ctcReco=null;
+function microMsg(t){const m=$('#kMicroMsg');m.style.display=t?'block':'none';m.innerHTML=t||''}
+function microStop(){if(ctcReco){try{ctcReco.stop()}catch(e){}ctcReco=null}$('#kMicro').textContent='🎤 Dicter'}
+$('#kMicro').onclick=()=>{
+  if(ctcReco)return microStop();
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition,ta=$('#kNote');
+  const clavier='Touche la case de la note, puis le <b>micro 🎤 de ton clavier</b> pour dicter.';
+  if(!SR){ta.focus();microMsg(clavier);return}
+  const r=new SR();r.lang='fr-FR';r.continuous=true;r.interimResults=true;
+  const avant=ta.value.trim();let fini='';
+  r.onresult=e=>{let prov='';for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal)fini+=t+' ';else prov+=t}
+    ta.value=(avant?avant+'\n':'')+(fini+prov).trim()};
+  r.onerror=e=>{microStop();microMsg(e.error==='not-allowed'?'Autorise le micro pour cette page, puis réessaie. Sinon : '+clavier:clavier)};
+  r.onend=()=>{if(ctcReco===r){microStop();microMsg(fini?'✅ C\'est noté. Relis et corrige si besoin.':'')}};
+  try{r.start();ctcReco=r;$('#kMicro').textContent='⏹ Arrêter';microMsg('🔴 Je t\'écoute… parle normalement, puis touche « Arrêter ».')}catch(e){microMsg(clavier)}
+};
+/* 📋 tout ce qu'il faut à Claude pour rédiger l'e-mail */
+$('#kClaude').onclick=async()=>{
+  microStop();
+  const v=id=>$('#'+id).value.trim();
+  const lignes=[['Prénom et nom',[v('kPrenom'),v('kNom')].filter(Boolean).join(' ')],['Fonction',v('kFonction')],['Mairie / organisme',v('kMairie')],['Ville',v('kVille')],
+    ['E-mail',v('kEmail')],['Téléphone',v('kTel')],['Rencontré à',[v('kEvt'),v('kDate')?new Date(v('kDate')).toLocaleDateString('fr-FR'):''].filter(Boolean).join(', ')]].filter(x=>x[1]);
+  const t='Prépare-moi un e-mail de suite pour ce contact, en vouvoyant, ton cordial et professionnel, avec un objet.\n\n'+lignes.map(x=>x[0]+' : '+x[1]).join('\n')+
+    '\n\nCe qui a été dit / la suite à donner :\n'+(v('kNote')||'(rien de noté)')+
+    (SERVICE_V?'':'\n\nMa signature : Gérard Girardeau, Directeur Innovation, SARL Coccinelle, 06 87 68 77 81, support@parkia.fr, www.parkia.fr, ma carte : carte.parkia.fr');
+  try{await navigator.clipboard.writeText(t);toast('📋 Copié : colle-le dans Claude')}
+  catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('📋 Copié : colle-le dans Claude')}catch(x){alert(t)}ta.remove()}
+};
 const CTC_CH={kPrenom:'prenom',kNom:'nom',kFonction:'fonction',kMairie:'mairie',kVille:'ville',kTel:'tel',kEmail:'email',kEvt:'evenement',kNote:'note'};
 function ouvrirCtc(id){
   const c=id?contactsVivants().find(x=>x.id===id):null;ctcId=c?c.id:null;
   for(const [k,f] of Object.entries(CTC_CH))$('#'+k).value=c?c[f]||'':'';
   $('#kDate').value=c&&c.rencontre?c.rencontre.slice(0,10):new Date().toISOString().slice(0,10);
   if(!c){const der=contactsVivants().sort((a,b)=>(b.modifie||'')>(a.modifie||'')?1:-1)[0];$('#kEvt').value=der&&der.evenement||''}
+  microStop();microMsg('');
   $('#ctcT').textContent=c?'👥 '+ctcNom(c):'👥 Nouveau contact';$('#kSuppr').style.display=c?'':'none';show('#ovCtc');setTimeout(()=>$('#kPrenom').focus(),50);
 }
 $('#kSave').onclick=()=>{
+  microStop();microMsg('');
   const c={id:ctcId||'k'+uid(),modifie:nowIso()};
   for(const [k,f] of Object.entries(CTC_CH))c[f]=$('#'+k).value.trim();
   c.rencontre=$('#kDate').value?new Date($('#kDate').value+'T12:00:00').toISOString():nowIso();
