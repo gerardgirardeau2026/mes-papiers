@@ -183,6 +183,7 @@ input.num,.in.num{text-align:right}
 tbody tr.dblc>td{background:#fbe1dc!important}
 body[data-theme=sombre] tbody tr.dblc>td{background:#4a2a26!important}
 .cherche{border:1px solid var(--line,#ddd);background:#fff;border-radius:6px;padding:1px 5px;margin-left:6px;cursor:pointer;font-size:12px;vertical-align:middle}.cherche:hover{background:#eef3ff}
+td.epc{position:relative}.epcp{position:absolute;left:5px;top:50%;transform:translateY(-50%);border:0;background:#e3ebfb;color:#2557c7;border-radius:5px;font-size:12px;line-height:1;padding:3px 5px;cursor:pointer;opacity:0;transition:opacity .12s}td.epc:hover .epcp,td.epc:focus-within .epcp{opacity:1}.epcp:hover{background:#2557c7;color:#fff}@media(hover:none){.epcp{opacity:.55}}
 </style>
 </head>
 <body>
@@ -1174,12 +1175,13 @@ function vEpargne(){
   $('#selEp').onchange=e=>{epAn=+e.target.value;vEpargne()};
   const rows=D.epargne.filter(e=>e.annee===epAn),sups=[...new Map(rows.slice().sort((a,b)=>a.ordre-b.ordre).map(e=>[e.support,e.ordre])).keys()];
   const val=(s,m)=>rows.find(e=>e.support===s&&e.mois===m)?.montant;
+  const gauche=(s,m)=>m>1?val(s,m-1):D.epargne.find(e=>e.annee===epAn-1&&e.support===s&&e.mois===12)?.montant;   // la case de gauche (janvier : décembre de l'an passé)
   const tot=m=>sups.reduce((t,s)=>t+(+val(s,m)||0),0);
   const prev=D.epargne.filter(e=>e.annee===epAn-1);
   $('#view').innerHTML=sups.length?`<div class="tw"><table class="recap"><thead><tr><th>${epAn}</th>${MOISC.map(m=>`<th class="num">${m}</th>`).join('')}<th></th></tr></thead><tbody>
-    ${sups.map(s=>`<tr><td><input class="in" data-ren="${esc(s)}" value="${esc(s)}" title="${esc(s)}" style="width:230px"></td>${MOISC.map((_,i)=>`<td class="num" style="padding:3px 4px"><input class="in num" data-s="${esc(s)}" data-m="${i+1}" value="${val(s,i+1)??''}" style="width:100%;min-width:72px;font-size:12.5px" inputmode="decimal"></td>`).join('')}<td><button class="ib" data-del="${esc(s)}" title="Supprimer ce support pour ${epAn}">✕</button></td></tr>`).join('')}
+    ${sups.map(s=>`<tr><td><input class="in" data-ren="${esc(s)}" value="${esc(s)}" title="${esc(s)}" style="width:230px"></td>${MOISC.map((_,i)=>`<td class="num epc" style="padding:3px 4px"><input class="in num" data-s="${esc(s)}" data-m="${i+1}" value="${val(s,i+1)??''}" style="width:100%;min-width:72px;font-size:12.5px" inputmode="decimal">${gauche(s,i+1)!=null?`<button class="epcp" data-cs="${esc(s)}" data-cm="${i+1}" title="Recopier ${esc(String(gauche(s,i+1)))} (mois précédent)" tabindex="-1">←</button>`:''}</td>`).join('')}<td><button class="ib" data-del="${esc(s)}" title="Supprimer ce support pour ${epAn}">✕</button></td></tr>`).join('')}
     <tr class="tot"><td>Total épargne</td>${MOISC.map((_,i)=>`<td class="num">${tot(i+1)?eur0(tot(i+1)):''}</td>`).join('')}<td></td></tr></tbody></table></div>
-    <p class="muted" style="font-size:13px">Saisis la valeur de chaque support en fin de mois. Astuce : tape une valeur puis Tab pour passer au mois suivant.</p>`
+    <p class="muted" style="font-size:13px">Saisis la valeur de chaque support en fin de mois. Astuce : tape une valeur puis Tab pour passer au mois suivant. La petite flèche ← dans une case recopie le mois précédent.</p>`
     :`<div class="empty"><b>Aucun support d'épargne pour ${epAn}</b>${prev.length?`<button class="btn pri" id="bCopy">Reprendre les supports de ${epAn-1}</button>`:'Ajoute un support avec « + Support ».'}</div>`;
   $('#bSup').onclick=async()=>{const n=prompt('Nom du support (ex. LDD GG, Assurance vie…)');if(!n)return;await epSet(n.trim(),1,null,sups.length);vEpargne()};
   if($('#bCopy'))$('#bCopy').onclick=async()=>{
@@ -1188,6 +1190,7 @@ function vEpargne(){
     vEpargne();
   };
   $('#view').querySelectorAll('[data-s]').forEach(i=>i.onchange=async()=>{const s=i.dataset.s;await epSet(s,+i.dataset.m,pNum(i.value),rows.find(e=>e.support===s)?.ordre??0);vEpargne();const n=$(`[data-s="${CSS.escape(s)}"][data-m="${Math.min(12,+i.dataset.m+1)}"]`);if(n)n.focus()});
+  $('#view').querySelectorAll('[data-cs]').forEach(b=>{b.onmousedown=e=>e.preventDefault();b.onclick=async()=>{const s=b.dataset.cs,m=+b.dataset.cm,v=gauche(s,m);if(v==null)return;await epSet(s,m,v,rows.find(e=>e.support===s)?.ordre??0);vEpargne();const n=$(`[data-s="${CSS.escape(s)}"][data-m="${m}"]`);if(n)n.focus()}});
   $('#view').querySelectorAll('[data-ren]').forEach(i=>i.onchange=async()=>{const o=i.dataset.ren,n=i.value.trim();if(!n||n===o)return;
     try{chk(await T('cpt_epargne').update({support:n}).eq('annee',epAn).eq('support',o),'renommage');D.epargne.forEach(e=>{if(e.annee===epAn&&e.support===o)e.support=n});toast('Support renommé')}catch(e){toast('Erreur : '+e.message)}vEpargne()});
   $('#view').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{const s=b.dataset.del;if(!confirm(`Supprimer « ${s} » pour ${epAn} ?`))return;
